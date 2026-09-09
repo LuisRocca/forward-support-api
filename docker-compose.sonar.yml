@@ -1,0 +1,61 @@
+name: forward-quality
+
+# Análisis estático. Deliberadamente SEPARADO de docker-compose.yml:
+# SonarQube arrastra Elasticsearch y su propia base de datos, y no tiene por qué
+# arrancar en el ciclo diario de desarrollo. Se levanta cuando se va a analizar.
+#
+#   pnpm sonar:up     levantar (tarda ~1-2 min en estar listo)
+#   pnpm sonar:scan   analizar este repo
+#   pnpm sonar:down   apagar
+
+services:
+  sonarqube:
+    image: sonarqube:community
+    container_name: forward_sonarqube
+    restart: unless-stopped
+    depends_on:
+      sonar_db:
+        condition: service_healthy
+    environment:
+      SONAR_JDBC_URL: jdbc:postgresql://sonar_db:5432/sonar
+      SONAR_JDBC_USERNAME: sonar
+      SONAR_JDBC_PASSWORD: ${SONAR_DB_PASSWORD:-sonar_dev}
+      # Elasticsearch embebido: sin este límite de heap se come toda la RAM libre.
+      SONAR_CE_JAVAOPTS: -Xmx1g
+      SONAR_WEB_JAVAOPTS: -Xmx1g
+    ports:
+      - "${SONAR_PORT:-9000}:9000"
+    volumes:
+      - sonar_data:/opt/sonarqube/data
+      - sonar_extensions:/opt/sonarqube/extensions
+      - sonar_logs:/opt/sonarqube/logs
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+
+  # Postgres 16, no 18: SonarQube soporta oficialmente hasta la 16, y con la 18
+  # su migración de arranque falla al hacer DROP de un NOT NULL sobre una columna
+  # que es parte de la PK. La base de la aplicación sigue en PG18; son independientes.
+  sonar_db:
+    image: postgres:16-alpine
+    container_name: forward_sonar_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: sonar
+      POSTGRES_PASSWORD: ${SONAR_DB_PASSWORD:-sonar_dev}
+      POSTGRES_DB: sonar
+    volumes:
+      - sonar_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sonar -d sonar"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+
+volumes:
+  sonar_data:
+  sonar_extensions:
+  sonar_logs:
+  sonar_db_data:
