@@ -1,0 +1,1879 @@
+{
+  "author": "Luis Miguel Alfonzo Roca",
+  "title": "Plataforma de Soporte - Modelo ER",
+  "date": "2026-09-09",
+  "database": "postgresql",
+  "tables": [
+    {
+      "id": 0,
+      "name": "roles",
+      "x": 60,
+      "y": 80,
+      "comment": "Catalogo de roles. Los permisos viven en codigo (mapa rol->permisos): hoy son estaticos y asi son testeables sin tocar BD. Migrar a role_permissions solo cuando el negocio pida permisos configurables.",
+      "fields": [
+        {
+          "name": "id",
+          "type": "UUID",
+          "default": "gen_random_uuid()",
+          "check": "",
+          "primary": true,
+          "unique": true,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "id": 0
+        },
+        {
+          "name": "code",
+          "type": "VARCHAR(50)",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": true,
+          "notNull": true,
+          "increment": false,
+          "comment": "admin | supervisor | agent. Clave estable usada por el guard de autorizacion.",
+          "id": 1
+        },
+        {
+          "name": "name",
+          "type": "VARCHAR(100)",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "id": 2
+        },
+        {
+          "name": "description",
+          "type": "TEXT",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": false,
+          "increment": false,
+          "comment": "",
+          "id": 3
+        },
+        {
+          "name": "is_system",
+          "type": "BOOLEAN",
+          "default": "true",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "Los roles del sistema no se pueden borrar desde la UI.",
+          "id": 4
+        },
+        {
+          "name": "created_at",
+          "type": "TIMESTAMPTZ",
+          "default": "now()",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "id": 5
+        },
+        {
+          "name": "updated_at",
+          "type": "TIMESTAMPTZ",
+          "default": "now()",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "id": 6
+        }
+      ],
+      "indices": [
+        {
+          "id": 0,
+          "name": "uq_roles_code",
+          "fields": [
+            "code"
+          ],
+          "unique": true
+        }
+      ],
+      "color": "#8a5cd6"
+    },
+    {
+      "id": 1,
+      "name": "user_roles",
+      "x": 60,
+      "y": 400,
+      "comment": "N:M usuario-rol. En operacion real un lider tambien atiende tickets; con 1:N habria que duplicar usuarios o inventar roles combinados.",
+      "fields": [
+        {
+          "name": "user_id",
+          "type": "UUID",
+          "default": "",
+          "check": "",
+          "primary": true,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "id": 0
+        },
+        {
+          "name": "role_id",
+          "type": "UUID",
+          "default": "",
+          "check": "",
+          "primary": true,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "id": 1
+        },
+        {
+          "name": "assigned_by_user_id",
+          "type": "UUID",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": false,
+          "increment": false,
+          "comment": "NULL = asignado por seed/sistema.",
+          "id": 2
+        },
+        {
+          "name": "assigned_at",
+          "type": "TIMESTAMPTZ",
+          "default": "now()",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "id": 3
+        }
+      ],
+      "indices": [
+        {
+          "id": 0,
+          "name": "idx_user_roles_role",
+          "fields": [
+            "role_id"
+          ],
+          "unique": false
+        }
+      ],
+      "color": "#8a5cd6"
+    },
+    {
+      "id": 2,
+      "name": "users",
+      "x": 60,
+      "y": 640,
+      "comment": "Usuarios internos (admin, supervisor, agente). No hay multi-tenant: la app es interna, los 'clientes' son datos, no inquilinos.",
+      "fields": [
+        {
+          "name": "id",
+          "type": "UUID",
+          "default": "gen_random_uuid()",
+          "check": "",
+          "primary": true,
+          "unique": true,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "id": 0
+        },
+        {
+          "name": "email",
+          "type": "VARCHAR(255)",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": true,
+          "notNull": true,
+          "increment": false,
+          "comment": "CITEXT o indice unico sobre lower(email) para evitar duplicados por mayusculas.",
+          "id": 1
+        },
+        {
+          "name": "password_hash",
+          "type": "VARCHAR(255)",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "argon2id. Nunca se selecciona en queries de lectura.",
+          "id": 2
+        },
+        {
+          "name": "full_name",
+          "type": "VARCHAR(150)",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "id": 3
+        },
+        {
+          "name": "status",
+          "type": "user_status",
+          "default": "'active'",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "active | blocked | inactive",
+          "id": 4
+        },
+        {
+          "name": "token_version",
+          "type": "INTEGER",
+          "default": "0",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "CLAVE: se incrementa al bloquear/cambiar password. El access token lleva esta version; si no coincide, se rechaza sin ir a BD.",
+          "id": 5
+        },
+        {
+          "name": "failed_login_attempts",
+          "type": "SMALLINT",
+          "default": "0",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "id": 6
+        },
+        {
+          "name": "locked_until",
+          "type": "TIMESTAMPTZ",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": false,
+          "increment": false,
+          "comment": "Bloqueo temporal automatico por fuerza bruta (distinto de status=blocked, que es administrativo).",
+          "id": 7
+        },
+        {
+          "name": "last_login_at",
+          "type": "TIMESTAMPTZ",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": false,
+          "increment": false,
+          "comment": "",
+          "id": 8
+        },
+        {
+          "name": "blocked_at",
+          "type": "TIMESTAMPTZ",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": false,
+          "increment": false,
+          "comment": "",
+          "id": 9
+        },
+        {
+          "name": "blocked_by_user_id",
+          "type": "UUID",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": false,
+          "increment": false,
+          "comment": "Quien bloqueo. Auto-referencia a users.",
+          "id": 10
+        },
+        {
+          "name": "blocked_reason",
+          "type": "VARCHAR(255)",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": false,
+          "increment": false,
+          "comment": "",
+          "id": 11
+        },
+        {
+          "name": "created_at",
+          "type": "TIMESTAMPTZ",
+          "default": "now()",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "id": 12
+        },
+        {
+          "name": "updated_at",
+          "type": "TIMESTAMPTZ",
+          "default": "now()",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "id": 13
+        },
+        {
+          "name": "deleted_at",
+          "type": "TIMESTAMPTZ",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": false,
+          "increment": false,
+          "comment": "Soft delete: los tickets historicos deben seguir mostrando a su autor.",
+          "id": 14
+        }
+      ],
+      "indices": [
+        {
+          "id": 0,
+          "name": "uq_users_email",
+          "fields": [
+            "email"
+          ],
+          "unique": true
+        },
+        {
+          "id": 1,
+          "name": "idx_users_status",
+          "fields": [
+            "status"
+          ],
+          "unique": false
+        }
+      ],
+      "color": "#8a5cd6"
+    },
+    {
+      "id": 3,
+      "name": "refresh_tokens",
+      "x": 60,
+      "y": 1200,
+      "comment": "Sesiones de larga vida. Es lo que permite echar a un usuario bloqueado sin esperar a que expire su JWT.",
+      "fields": [
+        {
+          "name": "id",
+          "type": "UUID",
+          "default": "gen_random_uuid()",
+          "check": "",
+          "primary": true,
+          "unique": true,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "id": 0
+        },
+        {
+          "name": "user_id",
+          "type": "UUID",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "id": 1
+        },
+        {
+          "name": "token_hash",
+          "type": "VARCHAR(255)",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": true,
+          "notNull": true,
+          "increment": false,
+          "comment": "SHA-256 del token. Nunca se guarda el token plano: si se filtra la BD no sirve para entrar.",
+          "id": 2
+        },
+        {
+          "name": "family_id",
+          "type": "UUID",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "Rotacion: si se reusa un token ya rotado se revoca la familia completa (robo detectado).",
+          "id": 3
+        },
+        {
+          "name": "expires_at",
+          "type": "TIMESTAMPTZ",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "id": 4
+        },
+        {
+          "name": "revoked_at",
+          "type": "TIMESTAMPTZ",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": false,
+          "increment": false,
+          "comment": "",
+          "id": 5
+        },
+        {
+          "name": "revoked_reason",
+          "type": "VARCHAR(100)",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": false,
+          "increment": false,
+          "comment": "logout | rotated | user_blocked | reuse_detected",
+          "id": 6
+        },
+        {
+          "name": "ip_address",
+          "type": "INET",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": false,
+          "increment": false,
+          "comment": "",
+          "id": 7
+        },
+        {
+          "name": "user_agent",
+          "type": "VARCHAR(255)",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": false,
+          "increment": false,
+          "comment": "",
+          "id": 8
+        },
+        {
+          "name": "created_at",
+          "type": "TIMESTAMPTZ",
+          "default": "now()",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "id": 9
+        }
+      ],
+      "indices": [
+        {
+          "id": 0,
+          "name": "idx_refresh_user_active",
+          "fields": [
+            "user_id",
+            "revoked_at"
+          ],
+          "unique": false
+        }
+      ],
+      "color": "#8a5cd6"
+    },
+    {
+      "id": 4,
+      "name": "clients",
+      "x": 540,
+      "y": 80,
+      "comment": "Clientes de la empresa. Catalogo, no inquilinos.",
+      "fields": [
+        {
+          "name": "id",
+          "type": "UUID",
+          "default": "gen_random_uuid()",
+          "check": "",
+          "primary": true,
+          "unique": true,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "id": 0
+        },
+        {
+          "name": "name",
+          "type": "VARCHAR(150)",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "id": 1
+        },
+        {
+          "name": "tax_id",
+          "type": "VARCHAR(30)",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": true,
+          "notNull": false,
+          "increment": false,
+          "comment": "NIT/RUT. Unico pero opcional.",
+          "id": 2
+        },
+        {
+          "name": "email",
+          "type": "VARCHAR(255)",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": false,
+          "increment": false,
+          "comment": "",
+          "id": 3
+        },
+        {
+          "name": "phone",
+          "type": "VARCHAR(30)",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": false,
+          "increment": false,
+          "comment": "",
+          "id": 4
+        },
+        {
+          "name": "is_active",
+          "type": "BOOLEAN",
+          "default": "true",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "id": 5
+        },
+        {
+          "name": "created_at",
+          "type": "TIMESTAMPTZ",
+          "default": "now()",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "id": 6
+        },
+        {
+          "name": "updated_at",
+          "type": "TIMESTAMPTZ",
+          "default": "now()",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "id": 7
+        },
+        {
+          "name": "deleted_at",
+          "type": "TIMESTAMPTZ",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": false,
+          "increment": false,
+          "comment": "",
+          "id": 8
+        }
+      ],
+      "indices": [
+        {
+          "id": 0,
+          "name": "idx_clients_name",
+          "fields": [
+            "name"
+          ],
+          "unique": false
+        }
+      ],
+      "color": "#2f9e44"
+    },
+    {
+      "id": 5,
+      "name": "ticket_categories",
+      "x": 540,
+      "y": 460,
+      "comment": "Catalogo (tabla) y no enum: la categoria la administra el negocio y cambia sin deploy. Estado y prioridad si son enums porque el codigo ramifica sobre ellos.",
+      "fields": [
+        {
+          "name": "id",
+          "type": "UUID",
+          "default": "gen_random_uuid()",
+          "check": "",
+          "primary": true,
+          "unique": true,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "id": 0
+        },
+        {
+          "name": "code",
+          "type": "VARCHAR(50)",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": true,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "id": 1
+        },
+        {
+          "name": "name",
+          "type": "VARCHAR(100)",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "id": 2
+        },
+        {
+          "name": "description",
+          "type": "TEXT",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": false,
+          "increment": false,
+          "comment": "",
+          "id": 3
+        },
+        {
+          "name": "default_priority",
+          "type": "ticket_priority",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": false,
+          "increment": false,
+          "comment": "Prioridad sugerida al crear un ticket de esta categoria.",
+          "id": 4
+        },
+        {
+          "name": "is_active",
+          "type": "BOOLEAN",
+          "default": "true",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "id": 5
+        },
+        {
+          "name": "created_at",
+          "type": "TIMESTAMPTZ",
+          "default": "now()",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "id": 6
+        },
+        {
+          "name": "updated_at",
+          "type": "TIMESTAMPTZ",
+          "default": "now()",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "id": 7
+        }
+      ],
+      "indices": [
+        {
+          "id": 0,
+          "name": "uq_ticket_categories_code",
+          "fields": [
+            "code"
+          ],
+          "unique": true
+        }
+      ],
+      "color": "#2f9e44"
+    },
+    {
+      "id": 6,
+      "name": "tickets",
+      "x": 900,
+      "y": 80,
+      "comment": "Entidad central. Campos denormalizados (last_activity_at, reassignment_count) y resolved_at/closed_at existen para responder las 7 queries sin escanear el historial.",
+      "fields": [
+        {
+          "name": "id",
+          "type": "UUID",
+          "default": "gen_random_uuid()",
+          "check": "",
+          "primary": true,
+          "unique": true,
+          "notNull": true,
+          "increment": false,
+          "comment": "UUIDv7 (ordenado por tiempo): mantiene localidad en el indice y no filtra cuantos tickets hay.",
+          "id": 0
+        },
+        {
+          "name": "code",
+          "type": "VARCHAR(20)",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": true,
+          "notNull": true,
+          "increment": false,
+          "comment": "Identificador humano: TCK-000123. Es el que se dice por telefono.",
+          "id": 1
+        },
+        {
+          "name": "client_id",
+          "type": "UUID",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "id": 2
+        },
+        {
+          "name": "category_id",
+          "type": "UUID",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": false,
+          "increment": false,
+          "comment": "",
+          "id": 3
+        },
+        {
+          "name": "title",
+          "type": "VARCHAR(200)",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "id": 4
+        },
+        {
+          "name": "description",
+          "type": "TEXT",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "id": 5
+        },
+        {
+          "name": "status",
+          "type": "ticket_status",
+          "default": "'open'",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "open | in_progress | pending_customer | resolved | closed",
+          "id": 6
+        },
+        {
+          "name": "priority",
+          "type": "ticket_priority",
+          "default": "'medium'",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "low | medium | high | critical",
+          "id": 7
+        },
+        {
+          "name": "created_by_user_id",
+          "type": "UUID",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "id": 8
+        },
+        {
+          "name": "assigned_to_user_id",
+          "type": "UUID",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": false,
+          "increment": false,
+          "comment": "NULL = sin asignar (bandeja de entrada).",
+          "id": 9
+        },
+        {
+          "name": "assigned_at",
+          "type": "TIMESTAMPTZ",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": false,
+          "increment": false,
+          "comment": "",
+          "id": 10
+        },
+        {
+          "name": "first_response_at",
+          "type": "TIMESTAMPTZ",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": false,
+          "increment": false,
+          "comment": "Para medir tiempo de primera respuesta cuando pidan ese KPI.",
+          "id": 11
+        },
+        {
+          "name": "resolved_at",
+          "type": "TIMESTAMPTZ",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": false,
+          "increment": false,
+          "comment": "Query 5: AVG(resolved_at - created_at) por prioridad.",
+          "id": 12
+        },
+        {
+          "name": "resolved_by_user_id",
+          "type": "UUID",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": false,
+          "increment": false,
+          "comment": "Explicito: el asignado actual puede no ser quien resolvio (query 4).",
+          "id": 13
+        },
+        {
+          "name": "closed_at",
+          "type": "TIMESTAMPTZ",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": false,
+          "increment": false,
+          "comment": "",
+          "id": 14
+        },
+        {
+          "name": "reopened_count",
+          "type": "SMALLINT",
+          "default": "0",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "id": 15
+        },
+        {
+          "name": "reassignment_count",
+          "type": "SMALLINT",
+          "default": "0",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "Desnormalizado, se actualiza en la MISMA transaccion que ticket_assignments. Query 7 pasa de agregar millones de filas a un index scan.",
+          "id": 16
+        },
+        {
+          "name": "due_at",
+          "type": "TIMESTAMPTZ",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": false,
+          "increment": false,
+          "comment": "Vencimiento por SLA. Hoy se calcula en la app; migrar a tabla sla_policies cuando el SLA sea configurable.",
+          "id": 17
+        },
+        {
+          "name": "last_activity_at",
+          "type": "TIMESTAMPTZ",
+          "default": "now()",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "CLAVE query 3: updated_at NO cambia cuando alguien comenta. Este campo si, y es el que define 'sin actualizacion hace 48h'.",
+          "id": 18
+        },
+        {
+          "name": "created_at",
+          "type": "TIMESTAMPTZ",
+          "default": "now()",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "id": 19
+        },
+        {
+          "name": "updated_at",
+          "type": "TIMESTAMPTZ",
+          "default": "now()",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "id": 20
+        },
+        {
+          "name": "deleted_at",
+          "type": "TIMESTAMPTZ",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": false,
+          "increment": false,
+          "comment": "",
+          "id": 21
+        }
+      ],
+      "indices": [
+        {
+          "id": 0,
+          "name": "uq_tickets_code",
+          "fields": [
+            "code"
+          ],
+          "unique": true
+        },
+        {
+          "id": 1,
+          "name": "idx_tickets_status_priority",
+          "fields": [
+            "status",
+            "priority"
+          ],
+          "unique": false
+        },
+        {
+          "id": 2,
+          "name": "idx_tickets_client_status",
+          "fields": [
+            "client_id",
+            "status"
+          ],
+          "unique": false
+        },
+        {
+          "id": 3,
+          "name": "idx_tickets_assigned_status",
+          "fields": [
+            "assigned_to_user_id",
+            "status"
+          ],
+          "unique": false
+        },
+        {
+          "id": 4,
+          "name": "idx_tickets_stale",
+          "fields": [
+            "last_activity_at"
+          ],
+          "unique": false
+        },
+        {
+          "id": 5,
+          "name": "idx_tickets_created_at_id",
+          "fields": [
+            "created_at",
+            "id"
+          ],
+          "unique": false
+        }
+      ],
+      "color": "#175e7a"
+    },
+    {
+      "id": 7,
+      "name": "ticket_comments",
+      "x": 1400,
+      "y": 80,
+      "comment": "Comentarios. is_internal separa lo que ve el cliente de la nota interna del supervisor: se filtra en la query, no en el front.",
+      "fields": [
+        {
+          "name": "id",
+          "type": "UUID",
+          "default": "gen_random_uuid()",
+          "check": "",
+          "primary": true,
+          "unique": true,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "id": 0
+        },
+        {
+          "name": "ticket_id",
+          "type": "UUID",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "id": 1
+        },
+        {
+          "name": "author_user_id",
+          "type": "UUID",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "id": 2
+        },
+        {
+          "name": "body",
+          "type": "TEXT",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "id": 3
+        },
+        {
+          "name": "is_internal",
+          "type": "BOOLEAN",
+          "default": "false",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "id": 4
+        },
+        {
+          "name": "created_at",
+          "type": "TIMESTAMPTZ",
+          "default": "now()",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "id": 5
+        },
+        {
+          "name": "updated_at",
+          "type": "TIMESTAMPTZ",
+          "default": "now()",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "id": 6
+        },
+        {
+          "name": "deleted_at",
+          "type": "TIMESTAMPTZ",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": false,
+          "increment": false,
+          "comment": "",
+          "id": 7
+        }
+      ],
+      "indices": [
+        {
+          "id": 0,
+          "name": "idx_comments_ticket_created",
+          "fields": [
+            "ticket_id",
+            "created_at"
+          ],
+          "unique": false
+        }
+      ],
+      "color": "#c9701a"
+    },
+    {
+      "id": 8,
+      "name": "ticket_status_history",
+      "x": 1400,
+      "y": 440,
+      "comment": "Historial de estados: append-only. Responde 'que paso con este ticket' sin depender de logs de aplicacion.",
+      "fields": [
+        {
+          "name": "id",
+          "type": "UUID",
+          "default": "gen_random_uuid()",
+          "check": "",
+          "primary": true,
+          "unique": true,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "id": 0
+        },
+        {
+          "name": "ticket_id",
+          "type": "UUID",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "id": 1
+        },
+        {
+          "name": "from_status",
+          "type": "ticket_status",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": false,
+          "increment": false,
+          "comment": "NULL en la creacion del ticket.",
+          "id": 2
+        },
+        {
+          "name": "to_status",
+          "type": "ticket_status",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "id": 3
+        },
+        {
+          "name": "changed_by_user_id",
+          "type": "UUID",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "id": 4
+        },
+        {
+          "name": "note",
+          "type": "VARCHAR(255)",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": false,
+          "increment": false,
+          "comment": "",
+          "id": 5
+        },
+        {
+          "name": "changed_at",
+          "type": "TIMESTAMPTZ",
+          "default": "now()",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "id": 6
+        }
+      ],
+      "indices": [
+        {
+          "id": 0,
+          "name": "idx_status_hist_ticket",
+          "fields": [
+            "ticket_id",
+            "changed_at"
+          ],
+          "unique": false
+        }
+      ],
+      "color": "#c9701a"
+    },
+    {
+      "id": 9,
+      "name": "ticket_assignments",
+      "x": 1400,
+      "y": 780,
+      "comment": "Historial de asignaciones. Fuente de verdad de la query 7 (reasignados mas de 2 veces) y del reporte de carga por agente.",
+      "fields": [
+        {
+          "name": "id",
+          "type": "UUID",
+          "default": "gen_random_uuid()",
+          "check": "",
+          "primary": true,
+          "unique": true,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "id": 0
+        },
+        {
+          "name": "ticket_id",
+          "type": "UUID",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "id": 1
+        },
+        {
+          "name": "from_user_id",
+          "type": "UUID",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": false,
+          "increment": false,
+          "comment": "NULL en la primera asignacion.",
+          "id": 2
+        },
+        {
+          "name": "to_user_id",
+          "type": "UUID",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "id": 3
+        },
+        {
+          "name": "assigned_by_user_id",
+          "type": "UUID",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "Quien reasigno (supervisor o admin), distinto de quien recibe.",
+          "id": 4
+        },
+        {
+          "name": "reason",
+          "type": "VARCHAR(255)",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": false,
+          "increment": false,
+          "comment": "",
+          "id": 5
+        },
+        {
+          "name": "assigned_at",
+          "type": "TIMESTAMPTZ",
+          "default": "now()",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "id": 6
+        }
+      ],
+      "indices": [
+        {
+          "id": 0,
+          "name": "idx_assignments_ticket",
+          "fields": [
+            "ticket_id",
+            "assigned_at"
+          ],
+          "unique": false
+        }
+      ],
+      "color": "#c9701a"
+    },
+    {
+      "id": 10,
+      "name": "audit_logs",
+      "x": 1400,
+      "y": 1120,
+      "comment": "Auditoria de seguridad transversal: logins fallidos, bloqueos, cambios de rol. BIGINT autoincremental (no UUID) porque es append-only de alto volumen y se particiona por mes.",
+      "fields": [
+        {
+          "name": "id",
+          "type": "BIGINT",
+          "default": "",
+          "check": "",
+          "primary": true,
+          "unique": true,
+          "notNull": true,
+          "increment": true,
+          "comment": "",
+          "id": 0
+        },
+        {
+          "name": "actor_user_id",
+          "type": "UUID",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": false,
+          "increment": false,
+          "comment": "NULL cuando la accion la ejecuta el sistema o un login anonimo fallido.",
+          "id": 1
+        },
+        {
+          "name": "action",
+          "type": "VARCHAR(80)",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "auth.login_failed | user.blocked | ticket.assigned | role.changed",
+          "id": 2
+        },
+        {
+          "name": "entity_type",
+          "type": "VARCHAR(50)",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "id": 3
+        },
+        {
+          "name": "entity_id",
+          "type": "VARCHAR(64)",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": false,
+          "increment": false,
+          "comment": "",
+          "id": 4
+        },
+        {
+          "name": "ip_address",
+          "type": "INET",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": false,
+          "increment": false,
+          "comment": "",
+          "id": 5
+        },
+        {
+          "name": "user_agent",
+          "type": "VARCHAR(255)",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": false,
+          "increment": false,
+          "comment": "",
+          "id": 6
+        },
+        {
+          "name": "metadata",
+          "type": "JSONB",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": false,
+          "increment": false,
+          "comment": "Payload variable. Nunca guardar aqui passwords, tokens ni datos sensibles.",
+          "id": 7
+        },
+        {
+          "name": "created_at",
+          "type": "TIMESTAMPTZ",
+          "default": "now()",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "id": 8
+        }
+      ],
+      "indices": [
+        {
+          "id": 0,
+          "name": "idx_audit_entity",
+          "fields": [
+            "entity_type",
+            "entity_id",
+            "created_at"
+          ],
+          "unique": false
+        },
+        {
+          "id": 1,
+          "name": "idx_audit_actor",
+          "fields": [
+            "actor_user_id",
+            "created_at"
+          ],
+          "unique": false
+        }
+      ],
+      "color": "#c9701a"
+    }
+  ],
+  "relationships": [
+    {
+      "id": 0,
+      "name": "fk_user_roles_user_id",
+      "startTableId": 1,
+      "startFieldId": 0,
+      "endTableId": 2,
+      "endFieldId": 0,
+      "cardinality": "many_to_one",
+      "updateConstraint": "No action",
+      "deleteConstraint": "Cascade"
+    },
+    {
+      "id": 1,
+      "name": "fk_user_roles_role_id",
+      "startTableId": 1,
+      "startFieldId": 1,
+      "endTableId": 0,
+      "endFieldId": 0,
+      "cardinality": "many_to_one",
+      "updateConstraint": "No action",
+      "deleteConstraint": "Restrict"
+    },
+    {
+      "id": 2,
+      "name": "fk_user_roles_assigned_by_user_id",
+      "startTableId": 1,
+      "startFieldId": 2,
+      "endTableId": 2,
+      "endFieldId": 0,
+      "cardinality": "many_to_one",
+      "updateConstraint": "No action",
+      "deleteConstraint": "Set null"
+    },
+    {
+      "id": 3,
+      "name": "fk_users_blocked_by_user_id",
+      "startTableId": 2,
+      "startFieldId": 10,
+      "endTableId": 2,
+      "endFieldId": 0,
+      "cardinality": "many_to_one",
+      "updateConstraint": "No action",
+      "deleteConstraint": "Set null"
+    },
+    {
+      "id": 4,
+      "name": "fk_refresh_tokens_user_id",
+      "startTableId": 3,
+      "startFieldId": 1,
+      "endTableId": 2,
+      "endFieldId": 0,
+      "cardinality": "many_to_one",
+      "updateConstraint": "No action",
+      "deleteConstraint": "Cascade"
+    },
+    {
+      "id": 5,
+      "name": "fk_tickets_client_id",
+      "startTableId": 6,
+      "startFieldId": 2,
+      "endTableId": 4,
+      "endFieldId": 0,
+      "cardinality": "many_to_one",
+      "updateConstraint": "No action",
+      "deleteConstraint": "Restrict"
+    },
+    {
+      "id": 6,
+      "name": "fk_tickets_category_id",
+      "startTableId": 6,
+      "startFieldId": 3,
+      "endTableId": 5,
+      "endFieldId": 0,
+      "cardinality": "many_to_one",
+      "updateConstraint": "No action",
+      "deleteConstraint": "Set null"
+    },
+    {
+      "id": 7,
+      "name": "fk_tickets_created_by_user_id",
+      "startTableId": 6,
+      "startFieldId": 8,
+      "endTableId": 2,
+      "endFieldId": 0,
+      "cardinality": "many_to_one",
+      "updateConstraint": "No action",
+      "deleteConstraint": "Restrict"
+    },
+    {
+      "id": 8,
+      "name": "fk_tickets_assigned_to_user_id",
+      "startTableId": 6,
+      "startFieldId": 9,
+      "endTableId": 2,
+      "endFieldId": 0,
+      "cardinality": "many_to_one",
+      "updateConstraint": "No action",
+      "deleteConstraint": "Set null"
+    },
+    {
+      "id": 9,
+      "name": "fk_tickets_resolved_by_user_id",
+      "startTableId": 6,
+      "startFieldId": 13,
+      "endTableId": 2,
+      "endFieldId": 0,
+      "cardinality": "many_to_one",
+      "updateConstraint": "No action",
+      "deleteConstraint": "Set null"
+    },
+    {
+      "id": 10,
+      "name": "fk_ticket_comments_ticket_id",
+      "startTableId": 7,
+      "startFieldId": 1,
+      "endTableId": 6,
+      "endFieldId": 0,
+      "cardinality": "many_to_one",
+      "updateConstraint": "No action",
+      "deleteConstraint": "Cascade"
+    },
+    {
+      "id": 11,
+      "name": "fk_ticket_comments_author_user_id",
+      "startTableId": 7,
+      "startFieldId": 2,
+      "endTableId": 2,
+      "endFieldId": 0,
+      "cardinality": "many_to_one",
+      "updateConstraint": "No action",
+      "deleteConstraint": "Restrict"
+    },
+    {
+      "id": 12,
+      "name": "fk_ticket_status_history_ticket_id",
+      "startTableId": 8,
+      "startFieldId": 1,
+      "endTableId": 6,
+      "endFieldId": 0,
+      "cardinality": "many_to_one",
+      "updateConstraint": "No action",
+      "deleteConstraint": "Cascade"
+    },
+    {
+      "id": 13,
+      "name": "fk_ticket_status_history_changed_by_user_id",
+      "startTableId": 8,
+      "startFieldId": 4,
+      "endTableId": 2,
+      "endFieldId": 0,
+      "cardinality": "many_to_one",
+      "updateConstraint": "No action",
+      "deleteConstraint": "Restrict"
+    },
+    {
+      "id": 14,
+      "name": "fk_ticket_assignments_ticket_id",
+      "startTableId": 9,
+      "startFieldId": 1,
+      "endTableId": 6,
+      "endFieldId": 0,
+      "cardinality": "many_to_one",
+      "updateConstraint": "No action",
+      "deleteConstraint": "Cascade"
+    },
+    {
+      "id": 15,
+      "name": "fk_ticket_assignments_from_user_id",
+      "startTableId": 9,
+      "startFieldId": 2,
+      "endTableId": 2,
+      "endFieldId": 0,
+      "cardinality": "many_to_one",
+      "updateConstraint": "No action",
+      "deleteConstraint": "Set null"
+    },
+    {
+      "id": 16,
+      "name": "fk_ticket_assignments_to_user_id",
+      "startTableId": 9,
+      "startFieldId": 3,
+      "endTableId": 2,
+      "endFieldId": 0,
+      "cardinality": "many_to_one",
+      "updateConstraint": "No action",
+      "deleteConstraint": "Restrict"
+    },
+    {
+      "id": 17,
+      "name": "fk_ticket_assignments_assigned_by_user_id",
+      "startTableId": 9,
+      "startFieldId": 4,
+      "endTableId": 2,
+      "endFieldId": 0,
+      "cardinality": "many_to_one",
+      "updateConstraint": "No action",
+      "deleteConstraint": "Restrict"
+    },
+    {
+      "id": 18,
+      "name": "fk_audit_logs_actor_user_id",
+      "startTableId": 10,
+      "startFieldId": 1,
+      "endTableId": 2,
+      "endFieldId": 0,
+      "cardinality": "many_to_one",
+      "updateConstraint": "No action",
+      "deleteConstraint": "Set null"
+    }
+  ],
+  "notes": [
+    {
+      "id": 0,
+      "x": 500,
+      "y": 1000,
+      "width": 380,
+      "height": 300,
+      "color": "#fff9b1",
+      "title": "Enums vs catalogo",
+      "content": "status y priority son ENUM de Postgres: son parte del flujo (el codigo ramifica sobre ellos), son pocos y estables, y el tipo obliga a que la BD rechace un valor invalido.\n\ncategories y clients son TABLAS: los administra el negocio y cambian sin deploy.\n\nCosto asumido: agregar un estado nuevo exige una migracion (ALTER TYPE). Es un cambio de flujo, no de datos: quiero que duela un poco."
+    },
+    {
+      "id": 1,
+      "x": 920,
+      "y": 1000,
+      "width": 380,
+      "height": 300,
+      "color": "#fff9b1",
+      "title": "Usuario bloqueado",
+      "content": "1. status = 'blocked' + blocked_at/by/reason.\n2. token_version++ -> todo access token emitido antes queda invalido al instante, sin consultar BD.\n3. UPDATE refresh_tokens SET revoked_at = now() WHERE user_id = X -> no puede renovar.\n4. Access token de 15 min: ventana maxima de exposicion si algo falla.\n5. Queda registro en audit_logs.\n\nSin token_version habria que consultar la BD en cada request o esperar a que expire el JWT."
+    },
+    {
+      "id": 2,
+      "x": 500,
+      "y": 1340,
+      "width": 380,
+      "height": 300,
+      "color": "#d4f8d4",
+      "title": "Millones de tickets",
+      "content": "- Paginacion por keyset (created_at, id), nunca OFFSET: la pagina 10.000 cuesta lo mismo que la 1.\n- Indices compuestos siguiendo los filtros reales de la UI (estado+prioridad, cliente+estado, agente+estado).\n- idx_tickets_stale como indice PARCIAL: WHERE status <> 'closed' AND deleted_at IS NULL. Solo indexa lo vivo.\n- reassignment_count desnormalizado evita agregar sobre el historial completo.\n- Metricas del dashboard desde vista materializada refrescada cada N minutos, no COUNT(*) en cada carga.\n- audit_logs particionado por mes."
+    },
+    {
+      "id": 3,
+      "x": 920,
+      "y": 1340,
+      "width": 380,
+      "height": 300,
+      "color": "#d4f8d4",
+      "title": "Convenciones",
+      "content": "- PK UUIDv7 en todas las entidades de negocio: ordenado por tiempo (mantiene localidad en el B-tree) y no filtra volumen de negocio como haria un serial. Excepcion: audit_logs usa BIGINT porque es append-only masivo.\n- TIMESTAMPTZ siempre, nunca TIMESTAMP.\n- Soft delete (deleted_at) donde hay historial que preservar; borrado fisico en refresh_tokens.\n- snake_case en BD, camelCase en la API. El ORM traduce.\n- Toda tabla de historial es append-only: sin UPDATE ni DELETE."
+    }
+  ],
+  "subjectAreas": [
+    {
+      "id": 0,
+      "name": "Identidad y acceso",
+      "x": 20,
+      "y": 20,
+      "width": 440,
+      "height": 1620,
+      "color": "#8a5cd6"
+    },
+    {
+      "id": 1,
+      "name": "Operacion de tickets",
+      "x": 500,
+      "y": 20,
+      "width": 820,
+      "height": 920,
+      "color": "#175e7a"
+    },
+    {
+      "id": 2,
+      "name": "Trazabilidad y auditoria",
+      "x": 1360,
+      "y": 20,
+      "width": 440,
+      "height": 1500,
+      "color": "#c9701a"
+    }
+  ],
+  "types": [],
+  "enums": [
+    {
+      "name": "user_status",
+      "values": [
+        "active",
+        "blocked",
+        "inactive"
+      ]
+    },
+    {
+      "name": "ticket_status",
+      "values": [
+        "open",
+        "in_progress",
+        "pending_customer",
+        "resolved",
+        "closed"
+      ]
+    },
+    {
+      "name": "ticket_priority",
+      "values": [
+        "low",
+        "medium",
+        "high",
+        "critical"
+      ]
+    }
+  ]
+}

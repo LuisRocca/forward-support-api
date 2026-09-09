@@ -1,114 +1,93 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# Plataforma de Soporte — API
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+API REST para la gestión de tickets de soporte: registrar, consultar, asignar
+y dar seguimiento, con trazabilidad y control de acceso por rol.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+Prueba técnica — Tech Lead Full Stack JavaScript.
+Frontend en un repositorio aparte (`erp_forward`).
 
-## Description
+## Stack
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+| Capa | Elección |
+|---|---|
+| Runtime | Node.js 24 |
+| Framework | NestJS 12 · TypeScript strict |
+| Base de datos | PostgreSQL 18 |
+| Tests | Vitest (unitarios + e2e) |
+| Lint / formato | oxlint · Prettier |
+| Paquetes | pnpm |
 
-## Project setup
+## Puesta en marcha
 
 ```bash
-$ pnpm install
+pnpm install
+cp .env.example .env          # ajustar los secretos JWT
+pnpm db:up                    # levanta Postgres dev + test
+pnpm start:dev
 ```
 
-## Compile and run the project
+| Servicio | Puerto | Notas |
+|---|---|---|
+| API | 3000 | corre fuera del contenedor, con hot reload |
+| Postgres dev | **5442** | persistente en volumen |
+| Postgres test | **5443** | efímero, en RAM |
+| Adminer | 8080 | opcional: `pnpm db:tools` |
+
+Puertos 5442/5443 en lugar de los habituales 5432/5433 a propósito: una máquina
+de desarrollo casi siempre tiene ya un Postgres local u otro proyecto ocupándolos.
+
+### Scripts de base de datos
 
 ```bash
-# development
-$ pnpm run start
-
-# watch mode
-$ pnpm run start:dev
-
-# production mode
-$ pnpm run start:prod
+pnpm db:up       # levantar dev + test
+pnpm db:down     # parar (conserva los datos de dev)
+pnpm db:reset    # borrar volúmenes y empezar de cero
+pnpm db:psql     # abrir psql contra la base de desarrollo
+pnpm db:logs     # seguir los logs de Postgres
 ```
 
-## Run tests
+## Entornos de base de datos
 
-```bash
-# unit tests
-$ pnpm run test
+Dos instancias, con propósitos distintos:
 
-# e2e tests
-$ pnpm run test:e2e
+- **`db`** — desarrollo. Volumen persistente, configuración por defecto.
+- **`db_test`** — pruebas de integración. Vive en `tmpfs` (RAM) y arranca con
+  `fsync=off`, `synchronous_commit=off` y `full_page_writes=off`. Se pierde
+  al parar el contenedor, que es exactamente lo que se quiere de una base de
+  pruebas, y a cambio la suite corre notablemente más rápido. Esa configuración
+  sería inaceptable en producción: sacrifica durabilidad ante un corte.
 
-# test coverage
-$ pnpm run test:cov
-```
+El script `docker/postgres/init/01-extensions.sql` se ejecuta una única vez, al
+inicializar el volumen, e instala `citext` y `pg_trgm`.
 
-## Deployment
+## Documentación
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+| Documento | Contenido |
+|---|---|
+| [`docs/DECISIONES-TECNICAS.md`](docs/DECISIONES-TECNICAS.md) | Decisiones de arquitectura y modelo, cada una con su justificación, su costo asumido y las condiciones bajo las que la cambiaría. |
+| [`docs/modelo-er-soporte.ddb`](docs/modelo-er-soporte.ddb) | Modelo entidad-relación. Se abre en [drawdb.app](https://drawdb.app) con *File → Import diagram*. |
+| [`docs/KNOWN_ISSUES.md`](docs/KNOWN_ISSUES.md) | Problemas ya diagnosticados y resueltos, con su causa. Consultar antes de depurar. |
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+## Uso de herramientas de IA
 
-```bash
-$ pnpm install -g @nestjs/mau
-$ mau deploy
-```
+> Declaración exigida por el enunciado. **Pendiente de completar con los
+> porcentajes reales antes de la entrega.**
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+- **Herramienta:** Claude Code (Opus).
+- **Dónde se usó hasta ahora:** contraste de alternativas en el modelo de datos,
+  redacción de la documentación y del `docker-compose`.
+- **Dónde no:** las decisiones de arquitectura (enums vs catálogo, estrategia de
+  invalidación de sesión, desnormalizaciones) son propias y están argumentadas
+  una a una en `docs/DECISIONES-TECNICAS.md`.
+- **Verificación:** la infraestructura no se dio por buena hasta levantarla:
+  los tres fallos de entorno que aparecieron en el camino están en
+  `docs/KNOWN_ISSUES.md` con su causa.
 
-## Observability
+## Estado
 
-In production applications, observability is essential for understanding how your system behaves, detecting issues early, and maintaining reliable performance.
-
-[NestJS Observe](https://observe.nestjs.com) automatically instruments your NestJS application, giving you deep visibility into your system with minimal setup:
-
-- **Distributed tracing:** Follow requests across services and understand how they flow through your system.
-- **Waterfall analysis:** Visualize request execution and identify slow operations, bottlenecks, and unexpected delays.
-- **Performance analysis:** Analyze application performance in real time and quickly pinpoint areas that need optimization.
-- **Metrics:** Track key application and infrastructure metrics to understand system health and performance trends.
-- **Logging:** Centralize and correlate logs with traces and other telemetry to make debugging easier.
-- **Error tracking:** Detect errors quickly and investigate their root causes with the surrounding context.
-- **SLA monitoring:** Track service-level objectives and identify when your application is approaching or exceeding defined thresholds.
-- **Alarms and alerts:** Set up alerts for critical errors, performance degradation, SLA violations, and other anomalies so your team can react quickly.
-
-## Resources
-
-Check out a few resources that may come in handy when working with NestJS:
-
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Auto-instrument your application with [NestJS Observer](https://observer.nestjs.com). Distributed tracing, metrics, and logging made easy. Error tracking and performance monitoring for your NestJS applications.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+- [x] Modelo entidad-relación y decisiones técnicas
+- [x] Entorno Postgres (desarrollo + pruebas)
+- [ ] `queries.sql` — las 7 consultas del enunciado
+- [ ] Esquema y migraciones
+- [ ] Autenticación y autorización por rol
+- [ ] Módulo de tickets
