@@ -1,0 +1,78 @@
+name: forward-support
+
+# Infraestructura local. La API se ejecuta fuera del contenedor (pnpm start:dev)
+# para conservar hot reload y depuración directa desde el editor.
+
+services:
+  db:
+    image: postgres:18-alpine
+    container_name: forward_db_dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-forward}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-forward_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-forward_support}
+      # Toda marca de tiempo se almacena en UTC; la zona horaria es problema del cliente.
+      TZ: UTC
+      PGTZ: UTC
+    ports:
+      - "${POSTGRES_PORT:-5442}:5432"
+    volumes:
+      - db_data:/var/lib/postgresql
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro,z
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-forward} -d ${POSTGRES_DB:-forward_support}"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+
+  db_test:
+    image: postgres:18-alpine
+    container_name: forward_db_test
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-forward}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-forward_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-forward_support}_test
+      TZ: UTC
+      PGTZ: UTC
+    ports:
+      - "${POSTGRES_TEST_PORT:-5443}:5432"
+    # Base de pruebas efímera: vive en RAM y sin garantías de durabilidad.
+    # Si el contenedor muere se pierde, que es justo lo que se espera de ella,
+    # y a cambio la suite de integración corre varias veces más rápido.
+    tmpfs:
+      - /var/lib/postgresql
+    command:
+      - postgres
+      - -c
+      - fsync=off
+      - -c
+      - synchronous_commit=off
+      - -c
+      - full_page_writes=off
+    volumes:
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro,z
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-forward} -d ${POSTGRES_DB:-forward_support}_test"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+
+  adminer:
+    image: adminer:5
+    container_name: forward_adminer
+    restart: unless-stopped
+    ports:
+      - "${ADMINER_PORT:-8080}:8080"
+    environment:
+      ADMINER_DEFAULT_SERVER: db
+    depends_on:
+      db:
+        condition: service_healthy
+    profiles: ["tools"]
+
+volumes:
+  db_data:
