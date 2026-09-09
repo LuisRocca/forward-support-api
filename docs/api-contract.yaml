@@ -1,0 +1,830 @@
+openapi: 3.1.0
+
+# CONTRATO CONGELADO. Es la fuente de verdad compartida entre api_forward y
+# erp_forward. Si el back necesita cambiarlo, se cambia AQUÍ primero y se avisa
+# al front; nunca al revés y nunca por separado.
+#
+# Convenciones transversales:
+#   - Todos los identificadores son UUID (v7 en el servidor).
+#   - Todas las marcas de tiempo son ISO 8601 en UTC, con sufijo Z.
+#   - snake_case en la base de datos, camelCase en la API. El ORM traduce.
+#   - Los errores siguen RFC 9457 (application/problem+json). Un solo formato
+#     para todo, para que el front tenga un único camino de manejo de errores.
+#   - Los listados paginan por keyset (cursor), nunca por OFFSET.
+
+info:
+  title: Plataforma de Soporte — API
+  version: 1.0.0
+  description: |
+    Gestión de tickets de soporte: registro, consulta, asignación y seguimiento.
+
+    ## Autenticación
+
+    Dos tokens con propósitos distintos:
+
+    - **Access token (JWT, 15 min)** — viaja en `Authorization: Bearer <token>`.
+      Vida corta a propósito: es la ventana máxima que sobrevive un usuario
+      bloqueado. El front lo guarda EN MEMORIA, nunca en localStorage, porque
+      cualquier XSS puede leer localStorage.
+    - **Refresh token (7 días)** — viaja en una cookie `httpOnly`, `Secure`,
+      `SameSite=Strict`. JavaScript no puede leerla. Es lo que permite recuperar
+      la sesión tras recargar la página sin exponer nada a XSS.
+
+    El access token incluye el claim `tokenVersion`. Al bloquear a un usuario o
+    cambiar su contraseña, el servidor incrementa esa versión y todo token
+    emitido antes queda inválido de inmediato, sin esperar a que expire.
+
+    ## Cómo debe reaccionar el cliente a un 401
+
+    El código dentro del cuerpo del error decide la reacción, y la distinción
+    importa: reintentar el refresh cuando la sesión está revocada es un bucle.
+
+    | `code` | Qué hacer |
+    |---|---|
+    | `AUTH_TOKEN_EXPIRED` | Llamar a `/auth/refresh` y reintentar la petición una vez. |
+    | `AUTH_TOKEN_REVOKED` | NO reintentar. Cerrar sesión y mandar al login. |
+    | `AUTH_USER_BLOCKED` | NO reintentar. Cerrar sesión y mostrar el motivo. |
+
+servers:
+  - url: http://localhost:3000
+    description: Desarrollo local
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Auth
+  - name: Tickets
+  - name: Comentarios
+  - name: Usuarios
+  - name: Clientes
+  - name: Métricas
+
+paths:
+  # ----------------------------------------------------------------- Auth
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Iniciar sesión
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200':
+          description: |
+            Sesión iniciada. Además del cuerpo, la respuesta trae la cookie
+            `refresh_token` (httpOnly, Secure, SameSite=Strict).
+          headers:
+            Set-Cookie:
+              schema: { type: string }
+              example: refresh_token=<opaco>; HttpOnly; Secure; SameSite=Strict; Path=/auth; Max-Age=604800
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionResponse' }
+        '401':
+          description: |
+            Credenciales inválidas. La respuesta es DELIBERADAMENTE idéntica tanto
+            si el email no existe como si la contraseña es incorrecta: distinguirlas
+            permite enumerar qué cuentas existen.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '423':
+          description: Cuenta bloqueada (administrativamente o por intentos fallidos).
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Renovar el access token
+      description: |
+        No lleva cuerpo: se autentica con la cookie `refresh_token`.
+
+        Rotación obligatoria: cada refresh invalida el token usado y emite uno
+        nuevo. Si llega un token ya rotado, se asume robo y se revoca la familia
+        entera de sesiones de ese usuario.
+      security: []
+      responses:
+        '200':
+          description: Token renovado. Trae una cookie `refresh_token` nueva.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionResponse' }
+        '401':
+          description: Refresh ausente, expirado, revocado o reutilizado.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Cerrar sesión
+      description: Revoca el refresh token actual y limpia la cookie.
+      responses:
+        '204': { description: Sesión cerrada }
+
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Usuario autenticado, con sus roles y permisos efectivos
+      description: |
+        El front usa `permissions` para decidir qué pinta, pero eso es solo
+        experiencia de usuario: el servidor vuelve a verificar permisos en cada
+        endpoint. Ocultar un botón no es autorización.
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthenticatedUser' }
+          description: OK
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  # -------------------------------------------------------------- Tickets
+  /tickets:
+    get:
+      tags: [Tickets]
+      summary: Listado de tickets
+      description: |
+        Paginación por keyset. La primera página se pide sin `cursor`; las
+        siguientes con el `nextCursor` de la respuesta anterior. No hay
+        parámetro de página ni total de páginas: contar todas las filas que
+        cumplen el filtro es la consulta que se cae con volumen.
+
+        Un agente solo ve por defecto sus tickets asignados; admin y supervisor
+        ven todos. El filtrado ocurre en el servidor, no en el cliente.
+      parameters:
+        - { $ref: '#/components/parameters/Limit' }
+        - { $ref: '#/components/parameters/Cursor' }
+        - name: status
+          in: query
+          description: Admite repetición para filtrar por varios estados.
+          schema:
+            type: array
+            items: { $ref: '#/components/schemas/TicketStatus' }
+        - name: priority
+          in: query
+          schema:
+            type: array
+            items: { $ref: '#/components/schemas/TicketPriority' }
+        - { name: clientId, in: query, schema: { type: string, format: uuid } }
+        - { name: categoryId, in: query, schema: { type: string, format: uuid } }
+        - name: assignedToUserId
+          in: query
+          description: El valor especial `unassigned` devuelve la bandeja sin asignar.
+          schema: { type: string }
+        - name: search
+          in: query
+          description: Búsqueda parcial sobre el título y el código del ticket.
+          schema: { type: string, maxLength: 120 }
+        - name: staleHours
+          in: query
+          description: |
+            Solo tickets no cerrados sin actividad desde hace más de N horas.
+            `staleHours=48` es la vista de "tickets estancados" del supervisor.
+          schema: { type: integer, minimum: 1 }
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [createdAt, -createdAt, lastActivityAt, -lastActivityAt, priority, -priority]
+            default: -createdAt
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pageInfo]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/TicketSummary' }
+                  pageInfo: { $ref: '#/components/schemas/PageInfo' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [Tickets]
+      summary: Crear un ticket
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateTicketRequest' }
+      responses:
+        '201':
+          description: Creado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TicketDetail' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /tickets/{ticketId}:
+    parameters: [{ $ref: '#/components/parameters/TicketId' }]
+    get:
+      tags: [Tickets]
+      summary: Detalle de un ticket
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TicketDetail' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Tickets]
+      summary: Actualizar un ticket
+      description: |
+        Un agente solo puede actualizar tickets asignados a él. Esa comprobación
+        es de PERTENENCIA, no de rol: verificar únicamente el rol es el fallo de
+        autorización más común.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateTicketRequest' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TicketDetail' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /tickets/{ticketId}/assign:
+    parameters: [{ $ref: '#/components/parameters/TicketId' }]
+    post:
+      tags: [Tickets]
+      summary: Asignar o reasignar
+      description: |
+        Endpoint propio y no un campo del PATCH: asignar deja rastro en el
+        historial e incrementa el contador de reasignaciones, en la misma
+        transacción. Solo admin y supervisor.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [assignedToUserId]
+              properties:
+                assignedToUserId: { type: string, format: uuid }
+                reason: { type: string, maxLength: 255 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TicketDetail' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /tickets/{ticketId}/status:
+    parameters: [{ $ref: '#/components/parameters/TicketId' }]
+    post:
+      tags: [Tickets]
+      summary: Cambiar el estado
+      description: |
+        Endpoint propio por la misma razón que `assign`: cada transición se
+        registra en el historial. Reabrir un ticket cerrado no es un estado
+        nuevo: lo devuelve a `open` e incrementa `reopenedCount`.
+
+        Una transición no permitida devuelve 409, no 422: la petición es válida,
+        el estado del recurso es el que no la admite.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { $ref: '#/components/schemas/TicketStatus' }
+                note: { type: string, maxLength: 255 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TicketDetail' }
+        '409':
+          description: Transición de estado no permitida.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /tickets/{ticketId}/comments:
+    parameters: [{ $ref: '#/components/parameters/TicketId' }]
+    get:
+      tags: [Comentarios]
+      summary: Comentarios de un ticket
+      description: |
+        Los comentarios internos se filtran EN LA CONSULTA para quien no debe
+        verlos. Mandarlos al navegador y ocultarlos por CSS es una filtración.
+      parameters:
+        - { $ref: '#/components/parameters/Limit' }
+        - { $ref: '#/components/parameters/Cursor' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pageInfo]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Comment' }
+                  pageInfo: { $ref: '#/components/schemas/PageInfo' }
+    post:
+      tags: [Comentarios]
+      summary: Añadir un comentario
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [body]
+              properties:
+                body: { type: string, minLength: 1, maxLength: 5000 }
+                isInternal:
+                  type: boolean
+                  default: false
+                  description: Solo admin y supervisor pueden marcarlo.
+      responses:
+        '201':
+          description: Creado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Comment' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /tickets/{ticketId}/history:
+    parameters: [{ $ref: '#/components/parameters/TicketId' }]
+    get:
+      tags: [Tickets]
+      summary: Trazabilidad del ticket
+      description: Cambios de estado y reasignaciones, en orden cronológico.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/HistoryEntry' }
+
+  # ------------------------------------------------------------- Usuarios
+  /users:
+    get:
+      tags: [Usuarios]
+      summary: Listado de usuarios (admin y supervisor)
+      parameters:
+        - { $ref: '#/components/parameters/Limit' }
+        - { $ref: '#/components/parameters/Cursor' }
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/UserStatus' }
+        - { name: roleCode, in: query, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pageInfo]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/User' }
+                  pageInfo: { $ref: '#/components/schemas/PageInfo' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /users/{userId}/block:
+    parameters: [{ name: userId, in: path, required: true, schema: { type: string, format: uuid } }]
+    post:
+      tags: [Usuarios]
+      summary: Bloquear a un usuario (solo admin)
+      description: |
+        Marca al usuario como bloqueado, incrementa su `tokenVersion` —lo que
+        invalida al instante todo access token ya emitido— y revoca todos sus
+        refresh tokens. Queda registrado en la auditoría.
+
+        Un administrador no puede bloquearse a sí mismo: dejaría el sistema sin
+        quien pueda desbloquear.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 3, maxLength: 255 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409':
+          description: Intento de bloquearse a sí mismo.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /users/{userId}/unblock:
+    parameters: [{ name: userId, in: path, required: true, schema: { type: string, format: uuid } }]
+    post:
+      tags: [Usuarios]
+      summary: Desbloquear a un usuario (solo admin)
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+
+  # ------------------------------------------------------------- Clientes
+  /clients:
+    get:
+      tags: [Clientes]
+      summary: Listado de clientes
+      parameters:
+        - { $ref: '#/components/parameters/Limit' }
+        - { $ref: '#/components/parameters/Cursor' }
+        - { name: search, in: query, schema: { type: string, maxLength: 120 } }
+        - { name: isActive, in: query, schema: { type: boolean } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pageInfo]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Client' }
+                  pageInfo: { $ref: '#/components/schemas/PageInfo' }
+
+  /ticket-categories:
+    get:
+      tags: [Clientes]
+      summary: Catálogo de categorías
+      description: |
+        Catálogo pequeño y estable. Se sirve con `Cache-Control` para que el
+        front no lo vuelva a pedir en cada carga de formulario.
+      responses:
+        '200':
+          description: OK
+          headers:
+            Cache-Control:
+              schema: { type: string }
+              example: private, max-age=300
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/TicketCategory' }
+
+  # ------------------------------------------------------------- Métricas
+  /metrics/dashboard:
+    get:
+      tags: [Métricas]
+      summary: Métricas del dashboard operativo
+      description: |
+        Se sirve desde una vista materializada refrescada periódicamente, no
+        contando filas en cada carga. `generatedAt` dice de cuándo son los datos:
+        el front debe mostrarlo en vez de aparentar tiempo real.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DashboardMetrics' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    TicketId:
+      name: ticketId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    Limit:
+      name: limit
+      in: query
+      description: Tamaño de página. El tope existe para que nadie pida 100.000 filas de una vez.
+      schema: { type: integer, minimum: 1, maximum: 100, default: 25 }
+    Cursor:
+      name: cursor
+      in: query
+      description: Cursor opaco devuelto por la página anterior. No interpretarlo en el cliente.
+      schema: { type: string }
+
+  responses:
+    Unauthorized:
+      description: No autenticado, token expirado o sesión revocada.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Forbidden:
+      description: Autenticado, pero sin permiso sobre este recurso.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    NotFound:
+      description: |
+        No existe, o existe pero no es visible para quien pregunta. Se responde
+        igual en ambos casos: un 403 distinguible confirma que el recurso existe.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    ValidationError:
+      description: Entrada inválida. `errors` detalla campo a campo.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ValidationProblem' }
+    TooManyRequests:
+      description: Límite de peticiones superado (rate limiting en endpoints de auth).
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+
+  schemas:
+    TicketStatus:
+      type: string
+      enum: [open, in_progress, pending_customer, resolved, closed]
+    TicketPriority:
+      type: string
+      enum: [low, medium, high, critical]
+    UserStatus:
+      type: string
+      enum: [active, blocked, inactive]
+    RoleCode:
+      type: string
+      enum: [admin, supervisor, agent]
+
+    Problem:
+      description: RFC 9457. Un único formato de error para toda la API.
+      type: object
+      required: [type, title, status, code]
+      properties:
+        type: { type: string, format: uri, example: 'https://docs.forward.local/errors/auth-token-expired' }
+        title: { type: string, example: 'El token de acceso ha expirado' }
+        status: { type: integer, example: 401 }
+        detail: { type: string }
+        instance: { type: string, example: '/tickets/9f1c…' }
+        code:
+          type: string
+          description: Código estable que el cliente puede usar para ramificar. El `title` es para humanos y puede cambiar.
+          example: AUTH_TOKEN_EXPIRED
+        traceId:
+          type: string
+          description: Identificador de la petición, para correlacionar con los logs del servidor.
+
+    ValidationProblem:
+      allOf:
+        - { $ref: '#/components/schemas/Problem' }
+        - type: object
+          properties:
+            errors:
+              type: array
+              items:
+                type: object
+                required: [field, message]
+                properties:
+                  field: { type: string, example: title }
+                  message: { type: string, example: 'Debe tener entre 5 y 200 caracteres' }
+
+    PageInfo:
+      type: object
+      required: [hasMore]
+      properties:
+        nextCursor:
+          type: [string, 'null']
+          description: Se pasa como `cursor` para la siguiente página. `null` si no hay más.
+        hasMore: { type: boolean }
+
+    UserRef:
+      description: Forma reducida de un usuario, la que se embebe en tickets y comentarios.
+      type: object
+      required: [id, fullName]
+      properties:
+        id: { type: string, format: uuid }
+        fullName: { type: string }
+
+    User:
+      type: object
+      required: [id, email, fullName, status, roles, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        fullName: { type: string }
+        status: { $ref: '#/components/schemas/UserStatus' }
+        roles:
+          type: array
+          items: { $ref: '#/components/schemas/RoleCode' }
+        lastLoginAt: { type: [string, 'null'], format: date-time }
+        blockedAt: { type: [string, 'null'], format: date-time }
+        blockedReason: { type: [string, 'null'] }
+        createdAt: { type: string, format: date-time }
+
+    AuthenticatedUser:
+      allOf:
+        - { $ref: '#/components/schemas/User' }
+        - type: object
+          required: [permissions]
+          properties:
+            permissions:
+              type: array
+              description: Permisos efectivos, para que el front decida qué pinta. No sustituyen la verificación del servidor.
+              items: { type: string, example: 'ticket:assign' }
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email, maxLength: 255 }
+        password: { type: string, minLength: 8, maxLength: 128 }
+
+    SessionResponse:
+      type: object
+      required: [accessToken, expiresIn, user]
+      properties:
+        accessToken:
+          type: string
+          description: JWT de 15 minutos. Guardar EN MEMORIA, nunca en localStorage.
+        expiresIn: { type: integer, description: Segundos hasta la expiración., example: 900 }
+        user: { $ref: '#/components/schemas/AuthenticatedUser' }
+
+    Client:
+      type: object
+      required: [id, name, isActive]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        taxId: { type: [string, 'null'] }
+        email: { type: [string, 'null'], format: email }
+        phone: { type: [string, 'null'] }
+        isActive: { type: boolean }
+
+    TicketCategory:
+      type: object
+      required: [id, code, name, isActive]
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string }
+        name: { type: string }
+        defaultPriority: { oneOf: [{ $ref: '#/components/schemas/TicketPriority' }, { type: 'null' }] }
+        isActive: { type: boolean }
+
+    TicketSummary:
+      description: |
+        Forma del listado. NO incluye `description`: en una tabla de 25 filas,
+        arrastrar el cuerpo completo de cada ticket es ancho de banda tirado.
+      type: object
+      required: [id, code, title, status, priority, client, createdAt, lastActivityAt]
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string, example: TCK-000123 }
+        title: { type: string }
+        status: { $ref: '#/components/schemas/TicketStatus' }
+        priority: { $ref: '#/components/schemas/TicketPriority' }
+        client: { $ref: '#/components/schemas/Client' }
+        category: { oneOf: [{ $ref: '#/components/schemas/TicketCategory' }, { type: 'null' }] }
+        assignedTo: { oneOf: [{ $ref: '#/components/schemas/UserRef' }, { type: 'null' }] }
+        commentCount: { type: integer }
+        createdAt: { type: string, format: date-time }
+        lastActivityAt:
+          type: string
+          format: date-time
+          description: |
+            Última actividad de cualquier tipo, incluidos comentarios. NO es
+            `updatedAt`: un comentario no modifica la fila del ticket. Este es el
+            campo sobre el que se calcula "sin actualización hace 48h".
+
+    TicketDetail:
+      allOf:
+        - { $ref: '#/components/schemas/TicketSummary' }
+        - type: object
+          required: [description, createdBy, reopenedCount, reassignmentCount]
+          properties:
+            description: { type: string }
+            createdBy: { $ref: '#/components/schemas/UserRef' }
+            resolvedBy: { oneOf: [{ $ref: '#/components/schemas/UserRef' }, { type: 'null' }] }
+            firstResponseAt: { type: [string, 'null'], format: date-time }
+            resolvedAt: { type: [string, 'null'], format: date-time }
+            closedAt: { type: [string, 'null'], format: date-time }
+            dueAt: { type: [string, 'null'], format: date-time }
+            reopenedCount: { type: integer }
+            reassignmentCount: { type: integer }
+            updatedAt: { type: string, format: date-time }
+
+    CreateTicketRequest:
+      type: object
+      required: [clientId, title, description]
+      properties:
+        clientId: { type: string, format: uuid }
+        categoryId: { type: [string, 'null'], format: uuid }
+        title: { type: string, minLength: 5, maxLength: 200 }
+        description: { type: string, minLength: 10, maxLength: 10000 }
+        priority:
+          allOf: [{ $ref: '#/components/schemas/TicketPriority' }]
+          default: medium
+        assignedToUserId:
+          type: [string, 'null']
+          format: uuid
+          description: Solo admin y supervisor pueden asignar en la creación.
+
+    UpdateTicketRequest:
+      description: |
+        Deliberadamente NO permite cambiar `status` ni la asignación: eso va por
+        sus endpoints propios, que dejan rastro en el historial.
+      type: object
+      minProperties: 1
+      properties:
+        title: { type: string, minLength: 5, maxLength: 200 }
+        description: { type: string, minLength: 10, maxLength: 10000 }
+        priority: { $ref: '#/components/schemas/TicketPriority' }
+        categoryId: { type: [string, 'null'], format: uuid }
+        dueAt: { type: [string, 'null'], format: date-time }
+
+    Comment:
+      type: object
+      required: [id, body, isInternal, author, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        body: { type: string }
+        isInternal: { type: boolean }
+        author: { $ref: '#/components/schemas/UserRef' }
+        createdAt: { type: string, format: date-time }
+
+    HistoryEntry:
+      type: object
+      required: [type, actor, occurredAt]
+      properties:
+        type: { type: string, enum: [status_change, assignment] }
+        actor: { $ref: '#/components/schemas/UserRef' }
+        fromStatus: { oneOf: [{ $ref: '#/components/schemas/TicketStatus' }, { type: 'null' }] }
+        toStatus: { oneOf: [{ $ref: '#/components/schemas/TicketStatus' }, { type: 'null' }] }
+        fromUser: { oneOf: [{ $ref: '#/components/schemas/UserRef' }, { type: 'null' }] }
+        toUser: { oneOf: [{ $ref: '#/components/schemas/UserRef' }, { type: 'null' }] }
+        note: { type: [string, 'null'] }
+        occurredAt: { type: string, format: date-time }
+
+    DashboardMetrics:
+      type: object
+      required: [generatedAt, openTickets, byStatus, byPriority, staleTickets, unassignedTickets]
+      properties:
+        generatedAt:
+          type: string
+          format: date-time
+          description: 'Momento del cálculo. Mostrarlo: los datos no son de tiempo real.'
+        openTickets: { type: integer }
+        staleTickets: { type: integer, description: No cerrados y sin actividad en más de 48h. }
+        unassignedTickets: { type: integer }
+        resolvedLast7Days: { type: integer }
+        byStatus:
+          type: array
+          items:
+            type: object
+            required: [status, count]
+            properties:
+              status: { $ref: '#/components/schemas/TicketStatus' }
+              count: { type: integer }
+        byPriority:
+          type: array
+          items:
+            type: object
+            required: [priority, count]
+            properties:
+              priority: { $ref: '#/components/schemas/TicketPriority' }
+              count: { type: integer }
+        avgResolutionHoursByPriority:
+          type: array
+          items:
+            type: object
+            required: [priority, hours]
+            properties:
+              priority: { $ref: '#/components/schemas/TicketPriority' }
+              hours: { type: [number, 'null'] }
