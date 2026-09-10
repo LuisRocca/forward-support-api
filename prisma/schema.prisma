@@ -1,0 +1,351 @@
+// Esquema derivado de docs/modelo-er-soporte.ddb y docs/DECISIONES-TECNICAS.md.
+// Convenciones: snake_case en la base de datos, camelCase en el cliente.
+// TIMESTAMPTZ siempre; PK UUIDv7 (uuidv7() es core en Postgres 18) salvo audit_logs.
+
+generator client {
+  provider        = "prisma-client"
+  output          = "../generated/prisma"
+  previewFeatures = ["partialIndexes", "postgresqlExtensions"]
+}
+
+datasource db {
+  provider = "postgresql"
+  // Declaradas aquí para que la migración las cree por sí misma: el script de
+  // docker/postgres/init solo corre al inicializar el volumen de desarrollo.
+  extensions = [citext, pg_trgm]
+}
+
+// ---------------------------------------------------------------- Enums
+// Estado y prioridad son parte del flujo: el codigo ramifica sobre ellos, son
+// pocos y estables, y el tipo obliga a que la base rechace un valor invalido.
+
+enum UserStatus {
+  active
+  blocked
+  inactive
+
+  @@map("user_status")
+}
+
+enum TicketStatus {
+  open
+  in_progress
+  pending_customer
+  resolved
+  closed
+
+  @@map("ticket_status")
+}
+
+enum TicketPriority {
+  low
+  medium
+  high
+  critical
+
+  @@map("ticket_priority")
+}
+
+// ------------------------------------------------- Identidad y acceso
+
+/// Catalogo de roles. Los permisos viven en codigo (mapa rol -> permisos).
+model Role {
+  id          String   @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  /// admin | supervisor | agent. Clave estable que usa el guard de autorizacion.
+  code        String   @unique(map: "uq_roles_code") @db.VarChar(50)
+  name        String   @db.VarChar(100)
+  description String?
+  /// Los roles del sistema no se pueden borrar desde la UI.
+  isSystem    Boolean  @default(true) @map("is_system")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  users UserRole[]
+
+  @@map("roles")
+}
+
+/// N:M usuario-rol: en operacion real un lider tambien atiende tickets.
+model UserRole {
+  userId           String   @map("user_id") @db.Uuid
+  roleId           String   @map("role_id") @db.Uuid
+  /// NULL = asignado por seed o por el sistema.
+  assignedByUserId String?  @map("assigned_by_user_id") @db.Uuid
+  assignedAt       DateTime @default(now()) @map("assigned_at") @db.Timestamptz(6)
+
+  user       User  @relation("UserRoleMember", fields: [userId], references: [id], onDelete: Cascade)
+  role       Role  @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  assignedBy User? @relation("UserRoleGrantedBy", fields: [assignedByUserId], references: [id], onDelete: SetNull)
+
+  @@id([userId, roleId])
+  @@index([roleId], map: "idx_user_roles_role")
+  @@map("user_roles")
+}
+
+/// Usuarios internos. No hay multi-tenant: los clientes son datos, no inquilinos.
+model User {
+  id                  String     @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  /// citext: evita que "Luis@x.com" y "luis@x.com" se registren como dos cuentas.
+  email               String     @unique(map: "uq_users_email") @db.Citext
+  /// argon2id. Nunca se selecciona en las queries de lectura.
+  passwordHash        String     @map("password_hash") @db.VarChar(255)
+  fullName            String     @map("full_name") @db.VarChar(150)
+  status              UserStatus @default(active)
+  /// Se incrementa al bloquear o al cambiar la password. El access token lleva
+  /// esta version; si no coincide, el guard rechaza sin ir a la base.
+  tokenVersion        Int        @default(0) @map("token_version")
+  failedLoginAttempts Int        @default(0) @map("failed_login_attempts") @db.SmallInt
+  /// Bloqueo temporal automatico por fuerza bruta, distinto de status = blocked,
+  /// que es administrativo. Mezclarlos deja a un admin fuera por un ataque.
+  lockedUntil         DateTime?  @map("locked_until") @db.Timestamptz(6)
+  lastLoginAt         DateTime?  @map("last_login_at") @db.Timestamptz(6)
+  blockedAt           DateTime?  @map("blocked_at") @db.Timestamptz(6)
+  blockedByUserId     String?    @map("blocked_by_user_id") @db.Uuid
+  blockedReason       String?    @map("blocked_reason") @db.VarChar(255)
+  createdAt           DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// Soft delete: los tickets historicos deben seguir mostrando a su autor.
+  deletedAt           DateTime?  @map("deleted_at") @db.Timestamptz(6)
+
+  blockedBy    User?  @relation("UserBlockedBy", fields: [blockedByUserId], references: [id], onDelete: SetNull)
+  blockedUsers User[] @relation("UserBlockedBy")
+
+  roles         UserRole[] @relation("UserRoleMember")
+  rolesGranted  UserRole[] @relation("UserRoleGrantedBy")
+  refreshTokens RefreshToken[]
+
+  ticketsCreated  Ticket[] @relation("TicketCreatedBy")
+  ticketsAssigned Ticket[] @relation("TicketAssignedTo")
+  ticketsResolved Ticket[] @relation("TicketResolvedBy")
+
+  comments        TicketComment[]
+  statusChanges   TicketStatusHistory[]
+  assignmentsFrom TicketAssignment[] @relation("AssignmentFrom")
+  assignmentsTo   TicketAssignment[] @relation("AssignmentTo")
+  assignmentsMade TicketAssignment[] @relation("AssignmentBy")
+  auditLogs       AuditLog[]
+
+  @@index([status], map: "idx_users_status")
+  @@map("users")
+}
+
+/// Sesiones de larga vida: es lo que permite echar a un usuario bloqueado sin
+/// esperar a que expire su access token.
+model RefreshToken {
+  id            String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  userId        String    @map("user_id") @db.Uuid
+  /// SHA-256 del token. Nunca se guarda el token plano: si se filtra la base, no sirve.
+  tokenHash     String    @unique(map: "uq_refresh_tokens_hash") @map("token_hash") @db.VarChar(255)
+  /// Rotacion: si se reusa un token ya rotado se revoca la familia completa.
+  familyId      String    @map("family_id") @db.Uuid
+  expiresAt     DateTime  @map("expires_at") @db.Timestamptz(6)
+  revokedAt     DateTime? @map("revoked_at") @db.Timestamptz(6)
+  /// logout | rotated | user_blocked | reuse_detected
+  revokedReason String?   @map("revoked_reason") @db.VarChar(100)
+  ipAddress     String?   @map("ip_address") @db.Inet
+  userAgent     String?   @map("user_agent") @db.VarChar(255)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt], map: "idx_refresh_user_active")
+  @@map("refresh_tokens")
+}
+
+// ------------------------------------------------------------ Operacion
+
+/// Clientes de la empresa. Catalogo, no inquilinos.
+model Client {
+  id        String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  name      String    @db.VarChar(150)
+  /// NIT/RUT. Unico pero opcional.
+  taxId     String?   @unique(map: "uq_clients_tax_id") @map("tax_id") @db.VarChar(30)
+  email     String?   @db.VarChar(255)
+  phone     String?   @db.VarChar(30)
+  isActive  Boolean   @default(true) @map("is_active")
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  tickets Ticket[]
+
+  @@index([name], map: "idx_clients_name")
+  /// Busqueda parcial por nombre: sin trigramas, un ILIKE '%texto%' es seq scan.
+  @@index([name(ops: raw("gin_trgm_ops"))], map: "idx_clients_name_trgm", type: Gin)
+  @@map("clients")
+}
+
+/// Catalogo y no enum: la categoria la administra el negocio y cambia sin deploy.
+model TicketCategory {
+  id              String          @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  code            String          @unique(map: "uq_ticket_categories_code") @db.VarChar(50)
+  name            String          @db.VarChar(100)
+  description     String?
+  /// Prioridad sugerida al crear un ticket de esta categoria.
+  defaultPriority TicketPriority? @map("default_priority")
+  isActive        Boolean         @default(true) @map("is_active")
+  createdAt       DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tickets Ticket[]
+
+  @@map("ticket_categories")
+}
+
+/// Entidad central. last_activity_at, reassignment_count y resolved_by_user_id
+/// existen para responder las consultas 3, 7 y 4 sin escanear el historial.
+model Ticket {
+  id                String         @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  /// Identificador humano (TCK-000123): el que se dice por telefono.
+  code              String         @unique(map: "uq_tickets_code") @db.VarChar(20)
+  clientId          String         @map("client_id") @db.Uuid
+  categoryId        String?        @map("category_id") @db.Uuid
+  title             String         @db.VarChar(200)
+  description       String
+  status            TicketStatus   @default(open)
+  priority          TicketPriority @default(medium)
+  createdByUserId   String         @map("created_by_user_id") @db.Uuid
+  /// NULL = sin asignar (bandeja de entrada).
+  assignedToUserId  String?        @map("assigned_to_user_id") @db.Uuid
+  assignedAt        DateTime?      @map("assigned_at") @db.Timestamptz(6)
+  /// Para el KPI de tiempo de primera respuesta.
+  firstResponseAt   DateTime?      @map("first_response_at") @db.Timestamptz(6)
+  /// Consulta 5: AVG(resolved_at - created_at) por prioridad.
+  resolvedAt        DateTime?      @map("resolved_at") @db.Timestamptz(6)
+  /// Explicito: el asignado actual puede no ser quien resolvio (consulta 4).
+  resolvedByUserId  String?        @map("resolved_by_user_id") @db.Uuid
+  closedAt          DateTime?      @map("closed_at") @db.Timestamptz(6)
+  /// Reabrir devuelve el ticket a open e incrementa este contador: un estado
+  /// reopened seria redundante y ensuciaria todas las queries de abiertos.
+  reopenedCount     Int            @default(0) @map("reopened_count") @db.SmallInt
+  /// Desnormalizado, se actualiza en la MISMA transaccion que ticket_assignments.
+  /// Convierte la consulta 7 de una agregacion masiva en un index scan.
+  reassignmentCount Int            @default(0) @map("reassignment_count") @db.SmallInt
+  /// Vencimiento por SLA. Hoy se calcula en la app.
+  dueAt             DateTime?      @map("due_at") @db.Timestamptz(6)
+  /// Clave de la consulta 3: updated_at NO cambia cuando alguien comenta.
+  /// Este campo se toca en cualquier evento del ticket.
+  lastActivityAt    DateTime       @default(now()) @map("last_activity_at") @db.Timestamptz(6)
+  createdAt         DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt         DateTime?      @map("deleted_at") @db.Timestamptz(6)
+
+  client     Client          @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  category   TicketCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  createdBy  User            @relation("TicketCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  assignedTo User?           @relation("TicketAssignedTo", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  resolvedBy User?           @relation("TicketResolvedBy", fields: [resolvedByUserId], references: [id], onDelete: SetNull)
+
+  comments      TicketComment[]
+  statusHistory TicketStatusHistory[]
+  assignments   TicketAssignment[]
+
+  // Indices compuestos que siguen los filtros reales de la UI, no uno por columna.
+  @@index([status, priority], map: "idx_tickets_status_priority")
+  @@index([clientId, status], map: "idx_tickets_client_status")
+  @@index([assignedToUserId, status], map: "idx_tickets_assigned_status")
+  /// Paginacion por keyset (created_at, id): la pagina 10.000 cuesta lo mismo que la 1.
+  @@index([createdAt, id], map: "idx_tickets_created_at_id")
+  /// PARCIAL: los cerrados son la mayoria del volumen historico y nunca se
+  /// consultan por antiguedad. Solo se indexa lo vivo.
+  @@index([lastActivityAt], map: "idx_tickets_stale", where: { status: { not: "closed" }, deletedAt: null })
+  /// Consulta 7. El contador desnormalizado evita agregar sobre el historial,
+  /// pero sin indice la consulta seguia leyendo la tabla entera: medido sobre
+  /// 100.000 tickets, 24 ms y 5.284 buffers con seq scan frente a 0,4 ms y 337
+  /// con este indice. Lo que lo hace escalar no es solo el filtro: el indice ya
+  /// entrega el orden que pide la consulta, asi que el LIMIT corta antes y el
+  /// coste deja de depender del tamaño de la tabla.
+  /// No es parcial (WHERE reassignment_count > 2) a proposito: el preview
+  /// partialIndexes de Prisma solo admite igualdad y not, asi que un umbral > 2
+  /// solo se expresa en SQL a mano y dejaria drift permanente entre el esquema
+  /// y la base. Medido, el parcial ocupa 144 kB y este 3 MB sobre una tabla de
+  /// 41 MB, con el mismo plan y el mismo tiempo: no compensa pagar el drift.
+  @@index([reassignmentCount(sort: Desc), createdAt(sort: Desc)], map: "idx_tickets_reasignados")
+  /// Busqueda parcial por titulo.
+  @@index([title(ops: raw("gin_trgm_ops"))], map: "idx_tickets_title_trgm", type: Gin)
+  @@map("tickets")
+}
+
+/// is_internal separa la nota interna del supervisor de lo que ve el cliente:
+/// se filtra EN LA QUERY, nunca en el front.
+model TicketComment {
+  id           String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  ticketId     String    @map("ticket_id") @db.Uuid
+  authorUserId String    @map("author_user_id") @db.Uuid
+  body         String
+  isInternal   Boolean   @default(false) @map("is_internal")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt    DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  author User   @relation(fields: [authorUserId], references: [id], onDelete: Restrict)
+
+  @@index([ticketId, createdAt], map: "idx_comments_ticket_created")
+  @@map("ticket_comments")
+}
+
+// ---------------------------------------------------------- Trazabilidad
+// Dos tablas tipadas en vez de un events genérico con payload JSONB: las
+// consultas 4 y 7 salen tipadas, indexadas y con integridad referencial.
+// Ambas son append-only: un historial editable no es historial.
+
+model TicketStatusHistory {
+  id              String        @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  ticketId        String        @map("ticket_id") @db.Uuid
+  /// NULL en la creacion del ticket.
+  fromStatus      TicketStatus? @map("from_status")
+  toStatus        TicketStatus  @map("to_status")
+  changedByUserId String        @map("changed_by_user_id") @db.Uuid
+  note            String?       @db.VarChar(255)
+  changedAt       DateTime      @default(now()) @map("changed_at") @db.Timestamptz(6)
+
+  ticket    Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  changedBy User   @relation(fields: [changedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([ticketId, changedAt], map: "idx_status_hist_ticket")
+  @@map("ticket_status_history")
+}
+
+model TicketAssignment {
+  id               String   @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  ticketId         String   @map("ticket_id") @db.Uuid
+  /// NULL en la primera asignacion.
+  fromUserId       String?  @map("from_user_id") @db.Uuid
+  toUserId         String   @map("to_user_id") @db.Uuid
+  /// Quien reasigno (supervisor o admin), distinto de quien recibe.
+  assignedByUserId String   @map("assigned_by_user_id") @db.Uuid
+  reason           String?  @db.VarChar(255)
+  assignedAt       DateTime @default(now()) @map("assigned_at") @db.Timestamptz(6)
+
+  ticket     Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  fromUser   User?  @relation("AssignmentFrom", fields: [fromUserId], references: [id], onDelete: SetNull)
+  toUser     User   @relation("AssignmentTo", fields: [toUserId], references: [id], onDelete: Restrict)
+  assignedBy User   @relation("AssignmentBy", fields: [assignedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([ticketId, assignedAt], map: "idx_assignments_ticket")
+  @@map("ticket_assignments")
+}
+
+/// Auditoria de seguridad transversal. BIGINT y no UUID: es append-only masivo
+/// y nadie referencia estas filas desde fuera.
+model AuditLog {
+  id          BigInt   @id @default(autoincrement())
+  /// NULL cuando la accion la ejecuta el sistema o un login anonimo fallido.
+  actorUserId String?  @map("actor_user_id") @db.Uuid
+  /// auth.login_failed | user.blocked | ticket.assigned | role.changed
+  action      String   @db.VarChar(80)
+  entityType  String   @map("entity_type") @db.VarChar(50)
+  entityId    String?  @map("entity_id") @db.VarChar(64)
+  ipAddress   String?  @map("ip_address") @db.Inet
+  userAgent   String?  @map("user_agent") @db.VarChar(255)
+  /// Payload variable. Nunca guardar aqui passwords, tokens ni datos sensibles.
+  metadata    Json?    @db.JsonB
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  actor User? @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId, createdAt], map: "idx_audit_entity")
+  @@index([actorUserId, createdAt], map: "idx_audit_actor")
+  @@map("audit_logs")
+}
