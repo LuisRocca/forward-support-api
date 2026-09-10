@@ -20,7 +20,11 @@ export const CodigoError = {
   NOT_FOUND: 'NOT_FOUND',
   VALIDATION_ERROR: 'VALIDATION_ERROR',
   CONFLICT: 'CONFLICT',
+  // Tres 409 distintos porque el cliente reacciona distinto a cada uno:
+  // transición fuera de la máquina (no reintentar), cambio concurrente
+  // (CONFLICT: recargar) y ticket cerrado (solo el admin puede reabrir).
   INVALID_STATUS_TRANSITION: 'INVALID_STATUS_TRANSITION',
+  TICKET_CLOSED: 'TICKET_CLOSED',
   RATE_LIMITED: 'RATE_LIMITED',
   INTERNAL_ERROR: 'INTERNAL_ERROR',
 } as const;

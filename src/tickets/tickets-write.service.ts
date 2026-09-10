@@ -124,7 +124,10 @@ export class TicketsWriteService {
 
     const ticket = await cargarTicketVisible(this.prisma, id, usuario);
     if (ticket.status === 'closed') {
-      throw AppError.conflicto('Un ticket cerrado no se edita: reábrelo primero.');
+      throw AppError.conflicto(
+        'Un ticket cerrado no se edita. Solo un administrador puede reabrirlo.',
+        CodigoError.TICKET_CLOSED,
+      );
     }
     if (dto.categoryId != null) await this.validarCategoria(dto.categoryId);
 
@@ -199,7 +202,10 @@ export class TicketsWriteService {
     const previo = ticket.assignedToUserId;
 
     if (ticket.status === 'closed') {
-      throw AppError.conflicto('Un ticket cerrado no se reasigna: reábrelo primero.');
+      throw AppError.conflicto(
+        'Un ticket cerrado no se reasigna. Solo un administrador puede reabrirlo.',
+        CodigoError.TICKET_CLOSED,
+      );
     }
     if (previo === dto.assignedToUserId) {
       throw AppError.conflicto('El ticket ya está asignado a ese usuario.');
