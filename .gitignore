@@ -59,4 +59,4 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 *.tsbuildinfo
 
 # Cliente de Prisma generado: se regenera con pnpm db:generate
-/generated
+/src/generated

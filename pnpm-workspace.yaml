@@ -2,13 +2,17 @@
 # genera este fichero para que se apruebe uno por uno. No es configuración de
 # monorepo: el repositorio no lo es.
 #
-# Solo se aprueban los de Prisma, que preparan el motor de esquema que usan
-# `prisma migrate` y `prisma generate`. Los tres restantes entran de forma
-# transitiva (Studio y el servidor de desarrollo de Prisma) y no se usan aquí,
-# así que se quedan bloqueados: menos código ejecutándose en cada `pnpm install`.
+# Se aprueban los de Prisma (preparan el motor de esquema que usan `prisma
+# migrate` y `prisma generate`) y el de argon2 (módulo nativo). Los tres
+# restantes entran de forma transitiva —Studio y el servidor de desarrollo de
+# Prisma— y no se usan aquí, así que se quedan bloqueados: menos código
+# ejecutándose en cada `pnpm install`.
 allowBuilds:
   '@prisma/engines': true
   prisma: true
+  # Módulo nativo: sin su script de instalación no compila donde no haya binario
+  # precompilado para la plataforma.
+  argon2: true
   esbuild: false
   msgpackr-extract: false
   workerd: false
