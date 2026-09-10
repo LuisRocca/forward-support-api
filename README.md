@@ -138,6 +138,33 @@ cuando la sesión está revocada es un bucle infinito:
 | `AUTH_USER_BLOCKED` | cierra sesión y muestra el motivo |
 | `AUTH_TOKEN_INVALID` | token ausente o ilegible: cierra sesión |
 
+## Imagen Docker
+
+```bash
+docker build --format docker -t forward-api .                          # API
+docker build --format docker --target migrate -t forward-api-migrate . # migraciones
+```
+
+`--format docker` hace falta con podman: en formato OCI se ignora el `HEALTHCHECK`.
+
+- **Multi-etapa.** Se compila con las dependencias de desarrollo; la imagen final
+  lleva solo `dist`, las dependencias de producción y `package.json`.
+- **Sin secretos.** Todo entra por variables de entorno en ejecución: como
+  mínimo `DATABASE_URL`, `JWT_ACCESS_SECRET` y `CORS_ORIGIN` (en AWS, desde
+  Secrets Manager en la task definition). La misma imagen sirve para todos los
+  entornos. `.dockerignore` excluye `.env` del contexto de build.
+- **Sin root.** Corre como el usuario `node` (uid 1000).
+- **`HEALTHCHECK`** contra `/health`, con `node` y `fetch`, sin instalar curl.
+- **Cierre ordenado.** Sale con `SIGTERM` en ~2 s (lo que manda ECS al
+  desplegar), gracias a `enableShutdownHooks()`.
+- **Migraciones aparte.** La imagen de la API no lleva el CLI de prisma para
+  migrar. La etapa `migrate` es una tarea puntual de ECS que ejecuta
+  `prisma migrate deploy` antes de desplegar la nueva versión.
+
+Tamaño: 539 MB, de los que ~200 MB son herramientas que entran por un peer
+opcional de `@prisma/client` y no se usan en runtime. Causa, lo que se probó y
+las salidas posibles en `docs/KNOWN_ISSUES.md`.
+
 ## Healthcheck
 
 `GET /health` es público, no pasa por el rate limiting y responde:

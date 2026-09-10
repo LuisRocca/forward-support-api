@@ -1,0 +1,14 @@
+# El contexto de build no debe llevar NADA que no haga falta para compilar, y
+# sobre todo ningún secreto: lo que entra en el contexto puede acabar en una capa.
+.env
+.env.*
+!.env.example
+.git
+node_modules
+dist
+coverage
+src/generated
+test
+*.log
+docker-compose*.yml
+sonar-project.properties
