@@ -42,6 +42,22 @@ const PERMISOS_POR_ROL: Record<CodigoRol, readonly Permiso[]> = {
   // El agente NO tiene TICKET_LEER_TODOS: solo ve los suyos. Y aunque tenga
   // TICKET_ACTUALIZAR, el endpoint comprueba además que el ticket sea suyo:
   // el permiso dice qué puede hacer, no sobre qué fila.
+  //
+  // DECISIÓN: el agente SÍ tiene COMENTARIO_LEER_INTERNOS, y es deliberado.
+  // "Interno" aquí significa "no visible para el cliente", no "solo para
+  // mandos". El agente es personal de soporte y necesita el contexto que dejó
+  // el supervisor sobre el ticket que está atendiendo; ocultárselo le haría
+  // trabajar con menos información que la que existe sobre su propio caso.
+  //
+  // La lectura alternativa —que solo supervisores y admin los lean— convertiría
+  // is_internal en un canal para hablar del agente sin que se entere, es decir
+  // en vigilancia interna, que es una función que nadie ha pedido y que además
+  // haría falta documentar ante los propios empleados.
+  //
+  // El campo existe como preparación para el día que haya portal de cliente:
+  // ahí es donde is_internal empieza a filtrar de verdad. Si algún día se pide
+  // el otro comportamiento, es un permiso nuevo (COMENTARIO_LEER_CONFIDENCIALES)
+  // y no un cambio de significado del que ya existe.
   agent: [
     Permiso.TICKET_LEER_ASIGNADOS,
     Permiso.TICKET_CREAR,
