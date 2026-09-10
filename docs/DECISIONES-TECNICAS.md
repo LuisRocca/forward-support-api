@@ -221,7 +221,32 @@ no inquilinos. Decirlo explícitamente evita que alguien asuma aislamiento que n
 
 ---
 
-## 5. Pendientes de esta fase
+## 5. Despliegue en AWS (evolución)
+
+No se despliega en esta fase; el diseño ya lo contempla.
+
+| Pieza | Servicio | Por qué |
+|---|---|---|
+| Front | S3 + CloudFront | Estático, cacheado en el borde, casi sin coste |
+| API | ECS Fargate detrás de un ALB, autoescalado | Contenedor sin estado: la sesión vive en BD, así que escala en horizontal sin afinidad |
+| Base de datos | RDS PostgreSQL Multi-AZ | Gestionada, con failover; réplica de lectura cuando las agregaciones globales (consultas 1, 2, 5, 6) molesten a la operación |
+| Secretos | Secrets Manager → variables de la tarea | Nunca en la imagen ni en el repo |
+| Vista de métricas | EventBridge Scheduler (o `pg_cron`) | Refresco periódico, `CONCURRENTLY` para no bloquear lecturas |
+| Imágenes / CI | GitHub Actions → ECR → ECS | `prisma migrate deploy` como paso previo al despliegue |
+| Logs | CloudWatch, correlacionados por `traceId` | El mismo `traceId` que ve el usuario en un error 500 |
+
+**Dominio:** front y API bajo el mismo dominio registrable (`app.` y `api.`), para que la cookie `SameSite=Strict` del refresh siga funcionando (ver contrato).
+
+**Lo que cambia al pasar de una réplica a varias**, y es lo primero que preguntaría un revisor:
+- **El rate limiting está hoy en la memoria del proceso.** Con N réplicas, cada una cuenta por separado y el límite real se multiplica por N. Pasa a Redis (ElastiCache) o a reglas rate-based de AWS WAF delante del ALB.
+- La comprobación de `token_version` pasa de Postgres a ElastiCache cuando el volumen de peticiones lo justifique (ver sección 2).
+- `audit_logs` se particiona por mes.
+
+**Coste:** Fargate y RDS dimensionados al mínimo y escalando por métrica; CloudFront absorbe el estático; las categorías llevan `Cache-Control` y las métricas salen de una vista materializada, no de un `COUNT(*)` por carga.
+
+---
+
+## 6. Pendientes de esta fase
 
 - [ ] `docker-compose.yml` (Postgres local + entorno de pruebas aislado)
 - [ ] `queries.sql` con las 8 consultas
