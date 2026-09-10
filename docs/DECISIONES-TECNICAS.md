@@ -11,7 +11,7 @@
 El PDF recibido llega **truncado**: los campos del ticket, la lista de estados y
 prioridades, y varios ítems de las vistas del front aparecen como `• ...`.
 
-Los anclajes duros y no negociables son las **7 consultas de `queries.sql`**: definen
+Los anclajes duros y no negociables son las **8 consultas de `queries.sql`**: definen
 qué preguntas tiene que poder responder el modelo. Diseñé el esquema *desde esas
 consultas hacia atrás* — si una query necesita un dato que no existe o que solo se
 puede obtener escaneando el historial completo, el modelo está mal.
@@ -224,7 +224,7 @@ no inquilinos. Decirlo explícitamente evita que alguien asuma aislamiento que n
 ## 5. Pendientes de esta fase
 
 - [ ] `docker-compose.yml` (Postgres local + entorno de pruebas aislado)
-- [ ] `queries.sql` con las 7 consultas
+- [ ] `queries.sql` con las 8 consultas
 - [ ] Esquema Prisma derivado de este modelo + seeds
 - [ ] API NestJS (validación en el borde, filtro de excepciones centralizado, respuestas consistentes)
 - [ ] Front React
