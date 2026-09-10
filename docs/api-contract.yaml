@@ -34,6 +34,18 @@ info:
     cambiar su contraseña, el servidor incrementa esa versión y todo token
     emitido antes queda inválido de inmediato, sin esperar a que expire.
 
+    ## Qué es un ticket "abierto" (definición única)
+
+    **Abierto = `open`, `in_progress` o `pending_customer`.** Un ticket `resolved`
+    está a la espera de cierre y no requiere acción de ningún agente, así que no
+    cuenta como abierto. Todo lo que el producto llama "abierto", "estancado" o
+    "sin asignar" parte de este mismo conjunto, de modo que estancados y sin
+    asignar son siempre subconjuntos de abiertos.
+
+    Nota: la consulta 3 de `queries.sql` sigue literal al enunciado ("no están
+    cerrados") e incluye los resueltos. La diferencia es deliberada y está
+    explicada allí.
+
     ## CORS y cookies
 
     El cliente envía `credentials: 'include'` en todas las peticiones: sin eso
@@ -240,7 +252,8 @@ paths:
         - name: staleHours
           in: query
           description: |
-            Solo tickets no cerrados sin actividad desde hace más de N horas.
+            Solo tickets abiertos (ver definición única) sin actividad desde hace
+            más de N horas.
             `staleHours=48` es la vista de "tickets estancados" del supervisor.
           schema: { type: integer, minimum: 1 }
         - name: sort
@@ -880,9 +893,9 @@ components:
           type: string
           format: date-time
           description: 'Momento del cálculo. Mostrarlo: los datos no son de tiempo real.'
-        openTickets: { type: integer }
-        staleTickets: { type: integer, description: No cerrados y sin actividad en más de 48h. }
-        unassignedTickets: { type: integer }
+        openTickets: { type: integer, description: 'open + in_progress + pending_customer. Los resueltos no cuentan.' }
+        staleTickets: { type: integer, description: 'Abiertos sin actividad en más de 48h. Siempre ≤ openTickets.' }
+        unassignedTickets: { type: integer, description: 'Abiertos sin agente asignado. Siempre ≤ openTickets.' }
         resolvedLast7Days: { type: integer }
         byStatus:
           type: array
