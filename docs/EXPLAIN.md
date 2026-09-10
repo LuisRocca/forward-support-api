@@ -4,6 +4,21 @@
 > `forward_db_dev` (PostgreSQL 18.6, puerto 5442) con el volumen que genera
 > `pnpm db:seed`. Reproducible: el seed usa `setseed(0.42)`.
 
+> [!warning] Qué métrica defender
+> **Los buffers son la métrica estable; el tiempo de pared no.** La misma
+> consulta con los mismos 2.444 buffers se midió en 20 ms y en 69 ms en dos
+> máquinas distintas: el tiempo depende de lo que haya en caché y de la carga del
+> equipo. Las páginas leídas son una propiedad del plan y no varían.
+>
+> Por eso las comparaciones de este documento se apoyan en buffers y los tiempos
+> se dan como orden de magnitud, no como cifra exacta.
+>
+> Y **todos los buffers citados son totales de la consulta completa**, medidos en
+> el nodo raíz (`Limit`). Si se cita el buffer de un nodo suelto —por ejemplo los
+> ~102 del `Index Scan` sobre `tickets` en la consulta 7— hay que decirlo, porque
+> comparar el subárbol de un join contra un único nodo de índice da una mejora
+> aparente mucho mayor que la real.
+
 ## Volumen medido
 
 ```
