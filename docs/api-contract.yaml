@@ -48,6 +48,26 @@ info:
     El origen se configura por entorno (`CORS_ORIGIN`), jamás hardcodeado, y en
     producción es una lista blanca explícita.
 
+    ### Cabeceras que el cliente necesita leer
+
+    **Regla general: una cabecera de respuesta que no esté en
+    `Access-Control-Expose-Headers` no existe para el JavaScript del cliente.**
+    El navegador la recibe y se la oculta; `headers.get(...)` devuelve `null`
+    sin error ni aviso. Es un fallo que no grita, como el de `SameSite`.
+
+    Por defecto solo son legibles siete: `Cache-Control`, `Content-Language`,
+    `Content-Length`, `Content-Type`, `Expires`, `Last-Modified` y `Pragma`.
+    Cualquier otra hay que exponerla de forma explícita.
+
+    Hoy la API debe exponer:
+
+    ```
+    Access-Control-Expose-Headers: Retry-After
+    ```
+
+    Al añadir en el futuro cualquier cabecera que el cliente deba leer, hay que
+    añadirla también a esa lista, o el front no la verá y nadie sabrá por qué.
+
     ## Restricción de despliegue: SameSite
 
     La cookie de refresh usa `SameSite=Strict`. En local no hay problema, porque
@@ -601,6 +621,13 @@ components:
             cliente solo puede enseñar un "espera un momento" que no se
             corresponde con nada, o reintentar a ciegas y agravar el problema.
           schema: { type: integer, example: 60 }
+        Access-Control-Expose-Headers:
+          required: true
+          description: |
+            Debe incluir `Retry-After`. Sin esta cabecera el navegador oculta
+            `Retry-After` al JavaScript del cliente y la cuenta atrás no aparece,
+            sin ningún error que lo delate.
+          schema: { type: string, example: Retry-After }
       content:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
