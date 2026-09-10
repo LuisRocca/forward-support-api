@@ -91,6 +91,12 @@ info:
     | `AUTH_TOKEN_EXPIRED` | Llamar a `/auth/refresh` y reintentar la petición una vez. |
     | `AUTH_TOKEN_REVOKED` | NO reintentar. Cerrar sesión y mandar al login. |
     | `AUTH_USER_BLOCKED` | NO reintentar. Cerrar sesión y mostrar el motivo. |
+    | `AUTH_TOKEN_INVALID` | Token ausente, malformado o con firma inválida. NO reintentar: refrescar no lo arregla. Al login. |
+    | `AUTH_INVALID_CREDENTIALS` | Solo en `/auth/login`. Es un intento fallido, no un problema de sesión: mostrar el mensaje y no tocar la sesión existente. |
+
+    `AUTH_TOKEN_INVALID` existe separado de `AUTH_TOKEN_EXPIRED` a propósito. Un
+    token ilegible devuelto como "expirado" mandaría al cliente a refrescar en
+    vano, y como el refresh no arregla un token malformado, entraría en bucle.
 
 servers:
   - url: http://localhost:3000
