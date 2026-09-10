@@ -786,8 +786,31 @@ components:
           properties:
             permissions:
               type: array
-              description: Permisos efectivos, para que el front decida qué pinta. No sustituyen la verificación del servidor.
-              items: { type: string, example: 'ticket:assign' }
+              description: |
+                Permisos efectivos (unión de los de sus roles), para que el front
+                decida qué pinta. No sustituyen la verificación del servidor, que
+                además comprueba pertenencia (el agente solo actúa sobre sus asignados).
+
+                | Permiso | admin | supervisor | agente |
+                |---|---|---|---|
+                | `ticket:read:all` | ✓ | ✓ | |
+                | `ticket:read:own` | ✓ | | ✓ |
+                | `ticket:create` | ✓ | ✓ | ✓ |
+                | `ticket:update` | ✓ | | ✓ (suyos) |
+                | `ticket:assign` | ✓ | ✓ | |
+                | `ticket:status` | ✓ | | ✓ (suyos) |
+                | `comment:create` | ✓ | ✓ | ✓ |
+                | `comment:read:internal` | ✓ | ✓ | ✓ |
+                | `user:read` | ✓ | ✓ | |
+                | `user:block` | ✓ | | |
+                | `client:read` | ✓ | ✓ | ✓ |
+                | `metrics:read` | ✓ | ✓ | |
+
+                El supervisor tiene `user:read` para elegir agente al reasignar,
+                no para administrar usuarios.
+              items:
+                type: string
+                enum: ['ticket:read:all', 'ticket:read:own', 'ticket:create', 'ticket:update', 'ticket:assign', 'ticket:status', 'comment:create', 'comment:read:internal', 'user:read', 'user:block', 'client:read', 'metrics:read']
 
     LoginRequest:
       type: object
