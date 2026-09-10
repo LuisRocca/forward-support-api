@@ -232,7 +232,7 @@ No se despliega en esta fase; el diseño ya lo contempla.
 | Base de datos | RDS PostgreSQL Multi-AZ | Gestionada, con failover; réplica de lectura cuando las agregaciones globales (consultas 1, 2, 5, 6) molesten a la operación |
 | Secretos | Secrets Manager → variables de la tarea | Nunca en la imagen ni en el repo |
 | Vista de métricas | EventBridge Scheduler (o `pg_cron`) | Refresco periódico, `CONCURRENTLY` para no bloquear lecturas |
-| Imágenes / CI | GitHub Actions → ECR → ECS | `prisma migrate deploy` como paso previo al despliegue |
+| Imágenes / CI | GitHub Actions → ECR → ECS | Migraciones como tarea puntual de ECS con la misma imagen (`--target migrate`) antes de actualizar el servicio. La app atiende `SIGTERM` para que un despliegue no corte peticiones en curso |
 | Logs | CloudWatch, correlacionados por `traceId` | El mismo `traceId` que ve el usuario en un error 500 |
 
 **Dominio:** front y API bajo el mismo dominio registrable (`app.` y `api.`), para que la cookie `SameSite=Strict` del refresh siga funcionando (ver contrato).
