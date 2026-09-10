@@ -168,19 +168,32 @@ El modelo justificaba `reassignment_count` como desnormalización para no agrega
 sobre `ticket_assignments`. El argumento es correcto pero estaba incompleto: sin
 un índice sobre la columna, la consulta **seguía leyendo la tabla entera**.
 
-Medido, las tres versiones sobre los mismos datos:
+Medido sobre los mismos datos. **Las dos primeras filas devuelven exactamente la
+misma salida** (código, título, estado, prioridad, cliente y agente), que es lo
+que hace falta para que la comparación signifique algo:
 
-| Versión | Plan | Buffers | Tiempo |
-|---|---|---|---|
-| Contador **sin** índice | `Seq Scan` + `Sort`, 95.943 filas descartadas por el filtro | 5.284 | 24,1 ms |
-| Agregando el historial completo (`GROUP BY ... HAVING count(*) > 2`) | `HashAggregate` sobre `Seq Scan` de 148.989 filas | 2.444 | 20,4 ms |
-| Contador **con** índice | `Index Scan`, sin `Sort` | 337 | **0,9 ms** |
+| Versión | Plan | Buffers |
+|---|---|---|
+| Contador **sin** índice | `Seq Scan` + `Sort`, 95.943 filas descartadas por el filtro | 5.284 |
+| Agregar el historial, **misma salida** | `HashAggregate` + `Hash Join` contra tickets | 7.728 |
+| Contador **con** índice | `Index Scan`, sin `Sort` | **337** |
+| *(referencia)* agregar el historial devolviendo solo `ticket_id` | `HashAggregate` sobre `Seq Scan` | 2.444 |
 
-El dato incómodo es el del medio: **sin índice, la desnormalización era más lenta
-que la consulta que pretendía evitar** (24,1 ms contra 20,4 ms). Desnormalizar sin
-indexar la columna desnormalizada no compra nada — solo añade una columna que hay
-que mantener en transacción. Con el índice, 26 veces más rápido y 15 veces menos
-buffers.
+> [!warning] Corrección de una conclusión anterior
+> Este documento afirmaba antes que **sin índice la desnormalización era más
+> lenta que la consulta que pretendía evitar**. Es falso, y el error estaba en la
+> comparación: se medía el contador (5.284, con todas las columnas del listado)
+> contra la agregación que devuelve **solo `ticket_id`** (2.444). No es la misma
+> consulta — un endpoint real necesita las columnas del ticket.
+>
+> Medida la agregación con la misma salida, son 7.728 buffers, así que el contador
+> sin índice sí gana, pero por poco: 5.284 contra 7.728.
+
+Lo que resiste cualquier encuadre es esto: **el contador por sí solo no gana de
+forma clara a nada. El salto de orden de magnitud lo da el índice** — 337 buffers,
+15 veces menos que el contador sin indexar y 23 veces menos que la agregación
+equivalente. El beneficio no vino de duplicar el dato, vino del índice que
+duplicar el dato hizo posible.
 
 Y otra vez lo que importa de verdad es el orden: el índice es
 `(reassignment_count DESC, created_at DESC)`, que es exactamente el `ORDER BY` de
