@@ -311,6 +311,11 @@ CROSS JOIN LATERAL (
 ) AS ts;
 
 -- >>>
+-- La secuencia de códigos continúa tras el último sembrado. Sin esto, el primer
+-- ticket creado desde la API tras un reseed chocaría contra uq_tickets_code.
+SELECT setval('ticket_code_seq', current_setting('seed.tickets')::bigint);
+
+-- >>>
 -- Sin ANALYZE el planificador trabaja con estadísticas de una tabla vacía y
 -- cualquier EXPLAIN posterior es ruido.
 ANALYZE tickets, ticket_assignments, ticket_status_history, ticket_comments, clients, users;

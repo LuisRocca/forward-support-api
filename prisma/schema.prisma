@@ -197,7 +197,9 @@ model TicketCategory {
 model Ticket {
   id                String         @id @default(dbgenerated("uuidv7()")) @db.Uuid
   /// Identificador humano (TCK-000123): el que se dice por telefono.
-  code              String         @unique(map: "uq_tickets_code") @db.VarChar(20)
+  /// Lo genera la base con siguiente_codigo_ticket(): una secuencia es atómica
+  /// bajo concurrencia, calcular max()+1 en la app no lo es.
+  code              String         @unique(map: "uq_tickets_code") @default(dbgenerated("siguiente_codigo_ticket()")) @db.VarChar(20)
   clientId          String         @map("client_id") @db.Uuid
   categoryId        String?        @map("category_id") @db.Uuid
   title             String         @db.VarChar(200)
