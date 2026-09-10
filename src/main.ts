@@ -29,6 +29,14 @@ async function bootstrap(): Promise<void> {
     exposedHeaders: ['Retry-After'],
   });
 
+  // Sin esto, SIGTERM no cierra el proceso: en un contenedor Node es el PID 1 y
+  // no trae manejador por defecto para esa señal. ECS manda SIGTERM al
+  // desplegar o reducir tareas y, pasado su timeout, SIGKILL: sin cierre
+  // ordenado se cortan las peticiones en curso y la conexión con la base.
+  // Con los hooks, Nest deja de aceptar peticiones, ejecuta onModuleDestroy
+  // (Prisma se desconecta) y el proceso sale.
+  app.enableShutdownHooks();
+
   await app.listen(env.puerto);
 }
 
