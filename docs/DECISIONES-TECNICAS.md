@@ -151,11 +151,30 @@ La respuesta está en el modelo — `users.token_version` y `refresh_tokens`:
 4. Access token de **15 minutos**: ventana máxima de exposición si algo del resto falla.
 5. Queda registro en `audit_logs` (`action = 'user.blocked'`).
 
-**El trade-off honesto:** el paso 2 exige conocer `token_version` en cada request. Sin
-caché, es un `SELECT` por request y pierdo buena parte de la ventaja del JWT stateless.
-La versión va en **Redis** (`user:{id}:tv`, TTL corto), no en Postgres. Sin Redis en el
-entorno de la prueba, el fallback aceptable es apoyarse solo en el TTL de 15 min y
-documentar la ventana.
+**El trade-off honesto:** el paso 2 exige conocer `token_version` en cada request, y
+eso cuesta una lectura. Hay dos formas de pagarla, y elegí la que hace verdadera la
+promesa:
+
+| Opción | Coste | Qué puedo prometer |
+|---|---|---|
+| No comprobar; confiar en el TTL | Cero | El bloqueo tarda **hasta 15 minutos** |
+| Comprobar contra Postgres | Un lookup por PK, sub-milisegundo | El bloqueo es **inmediato** |
+| Comprobar contra Redis | Una lectura en memoria | El bloqueo es **inmediato** |
+
+En esta fase se comprueba **contra Postgres**. Sí, eso sacrifica parte de la ventaja
+del JWT sin estado, y lo asumo a conciencia: el requisito real no es "que el token sea
+puro", es "que un usuario bloqueado no pueda seguir entrando". Con la primera opción,
+la respuesta honesta a esa pregunta sería "durante un cuarto de hora, sí", que no es
+una respuesta.
+
+Es además un lookup por clave primaria sobre una tabla pequeña, en peticiones que ya
+van a tocar la base de datos de todas formas. A este volumen no es el cuello de
+botella de nada.
+
+**Cuándo lo cambio:** cuando el volumen de peticiones lo justifique, esa lectura se
+mueve a Redis (`user:{id}:tv`, TTL corto). Es un cambio localizado en el guard y no
+toca ni el modelo ni el contrato — por eso no merece la pena arrastrar Redis hoy solo
+para esto.
 
 **Además:** `failed_login_attempts` + `locked_until` para bloqueo automático por fuerza
 bruta — deliberadamente **separado** de `status = 'blocked'`, que es administrativo.

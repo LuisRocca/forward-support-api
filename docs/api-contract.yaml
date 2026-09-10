@@ -593,6 +593,14 @@ components:
           schema: { $ref: '#/components/schemas/ValidationProblem' }
     TooManyRequests:
       description: Límite de peticiones superado (rate limiting en endpoints de auth).
+      headers:
+        Retry-After:
+          required: true
+          description: |
+            Segundos que faltan para poder reintentar. Obligatorio: sin él, el
+            cliente solo puede enseñar un "espera un momento" que no se
+            corresponde con nada, o reintentar a ciegas y agravar el problema.
+          schema: { type: integer, example: 60 }
       content:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
