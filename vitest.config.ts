@@ -8,6 +8,15 @@ export default defineConfig({
   test: {
     globals: true,
     root: './',
+    coverage: {
+      provider: 'v8',
+      // lcov para SonarQube; el reporter por defecto de v8 no lo genera.
+      reporter: ['text-summary', 'lcov'],
+      reportsDirectory: './coverage/unit',
+      include: ['src/**/*.ts'],
+      // El cliente generado y los dobles de test no son código a cubrir.
+      exclude: ['src/generated/**', 'src/**/*.spec.ts', 'src/**/test-doubles.ts'],
+    },
     include: ['**/*.spec.ts'],
   },
 });

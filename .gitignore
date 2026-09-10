@@ -60,3 +60,6 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
 # Cliente de Prisma generado: se regenera con pnpm db:generate
 /src/generated
+
+# Directorio de trabajo del scanner de SonarQube si se lanza sin el script
+.scannerwork/

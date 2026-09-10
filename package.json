@@ -17,7 +17,7 @@
     "lint": "oxlint --type-aware --ignore-pattern \"src/generated/**\" src/ test/ prisma/ prisma.config.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:cov": "vitest run --coverage",
+    "test:cov": "vitest run --coverage && vitest run --config ./vitest.config.e2e.ts --coverage",
     "test:debug": "vitest --inspect-brk --no-file-parallelism",
     "test:e2e": "vitest run --config ./vitest.config.e2e.ts",
     "db:up": "docker compose up -d db db_test",
@@ -33,7 +33,7 @@
     "sonar:up": "docker compose -f docker-compose.sonar.yml up -d",
     "sonar:down": "docker compose -f docker-compose.sonar.yml down",
     "sonar:logs": "docker compose -f docker-compose.sonar.yml logs -f sonarqube",
-    "sonar:scan": "docker run --rm --network forward-quality_default --env-file .env -e SONAR_HOST_URL=http://sonarqube:9000 -v \"$PWD:/usr/src:z\" sonarsource/sonar-scanner-cli",
+    "sonar:scan": "sh scripts/sonar-scan.sh",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
