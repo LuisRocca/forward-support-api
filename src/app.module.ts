@@ -14,6 +14,7 @@ import { TraceMiddleware } from './common/trace/trace.middleware.js';
 import { MetricsModule } from './metrics/metrics.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { TicketsModule } from './tickets/tickets.module.js';
+import { UsersModule } from './users/users.module.js';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { TicketsModule } from './tickets/tickets.module.js';
     TicketsModule,
     CatalogModule,
     MetricsModule,
+    UsersModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: ProblemFilter },
