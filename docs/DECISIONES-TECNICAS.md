@@ -62,22 +62,32 @@ se diseñó contra la consulta y no al revés:
    desnormalización es una mentira esperando a pasar.
 
    **Corrección tras medir sobre 100.000 tickets:** el contador por sí solo no
-   arregla nada. Sin un índice sobre esa columna, la consulta sigue leyendo la
-   tabla entera y lee *más* páginas que la agregación que pretendía evitar:
+   arregla nada. Medido sobre la consulta real de `queries.sql` —la que devuelve
+   cliente y agente, no solo identificadores— en páginas leídas por la **consulta
+   completa**, no por un nodo suelto del plan:
 
-   | Variante | Páginas leídas | Plan |
+   | Variante | Páginas | Plan |
    |---|---|---|
-   | Contador, sin índice | 5.278 | Seq Scan + Sort |
-   | Agregando `ticket_assignments` | 2.444 | Seq Scan + HashAggregate |
-   | **Contador, con índice** | **103** | **Index Scan, sin Sort** |
+   | Contador, **sin** índice | 5.284 | `Seq Scan` + `Sort` |
+   | Agregar el historial, misma salida | 7.728 | `HashAggregate` + `Seq Scan` de tickets |
+   | Agregar el historial, solo `ticket_id` | 2.444 | `HashAggregate` |
+   | **Contador, con índice** | **337** | **`Index Scan`, sin `Sort`** |
 
-   Con el índice `(reassignment_count DESC, created_at DESC)` la consulta baja a
-   ~0,7 ms. Sin él, la desnormalización solo aporta complejidad de escritura.
+   Lo que enseña la tabla: **el contador sin índice no gana de forma clara a la
+   agregación que pretendía sustituir.** Es algo mejor que la variante con la
+   misma salida (5.284 contra 7.728) y claramente peor que la que solo devuelve
+   identificadores (contra 2.444). El salto de verdad, un orden de magnitud, lo
+   da el índice `(reassignment_count DESC, created_at DESC)`: 337 páginas y
+   ~0,9 ms.
 
-   La lección general, y es la que vale más que el caso concreto:
-   **desnormalizar sin indexar la columna desnormalizada no es una optimización,
-   es solo una copia del dato que hay que mantener sincronizada.** El beneficio
-   no vino de duplicar el dato, sino del índice que ese dato hizo posible.
+   La lección general, que vale más que el caso concreto: **desnormalizar sin
+   indexar la columna desnormalizada no es una optimización, es solo una copia
+   del dato que hay que mantener sincronizada.** El beneficio no vino de
+   duplicar el dato, sino del índice que ese dato hizo posible.
+
+   Las páginas leídas son la métrica estable; los tiempos varían con la caché
+   (la misma consulta, con los mismos 2.444 buffers, dio 20 ms y 69 ms en dos
+   corridas). Los `EXPLAIN` completos están en `docs/EXPLAIN.md`.
 
 3. **`tickets.resolved_by_user_id`** — la query 4 pide el usuario con más tickets
    resueltos. Usar `assigned_to_user_id` sería incorrecto: un ticket puede reasignarse
