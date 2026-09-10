@@ -744,7 +744,6 @@ components:
         client: { $ref: '#/components/schemas/Client' }
         category: { oneOf: [{ $ref: '#/components/schemas/TicketCategory' }, { type: 'null' }] }
         assignedTo: { oneOf: [{ $ref: '#/components/schemas/UserRef' }, { type: 'null' }] }
-        commentCount: { type: integer }
         createdAt: { type: string, format: date-time }
         lastActivityAt:
           type: string
@@ -758,9 +757,18 @@ components:
       allOf:
         - { $ref: '#/components/schemas/TicketSummary' }
         - type: object
-          required: [description, createdBy, reopenedCount, reassignmentCount]
+          required: [description, createdBy, reopenedCount, reassignmentCount, commentCount]
           properties:
             description: { type: string }
+            commentCount:
+              type: integer
+              description: |
+                Solo en el detalle, nunca en el listado. En el detalle es un
+                conteo sobre una única fila. En un listado de 25 tickets sería
+                una agregación por fila en la ruta más caliente de la app, que
+                es justo lo que no se debe hacer. Si el negocio lo pide en la
+                tabla, se desnormaliza en `tickets` CON su índice y se mantiene
+                en la misma transacción, igual que `reassignmentCount`.
             createdBy: { $ref: '#/components/schemas/UserRef' }
             resolvedBy: { oneOf: [{ $ref: '#/components/schemas/UserRef' }, { type: 'null' }] }
             firstResponseAt: { type: [string, 'null'], format: date-time }
