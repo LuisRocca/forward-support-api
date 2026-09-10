@@ -126,6 +126,7 @@ security:
   - bearerAuth: []
 
 tags:
+  - name: Operación
   - name: Auth
   - name: Tickets
   - name: Comentarios
@@ -134,6 +135,15 @@ tags:
   - name: Métricas
 
 paths:
+  /health:
+    get:
+      tags: [Operación]
+      summary: Healthcheck para el balanceador (ALB/ECS)
+      security: []
+      responses:
+        '200': { description: API y base de datos operativas }
+        '503': { description: La base de datos no responde }
+
   # ----------------------------------------------------------------- Auth
   /auth/login:
     post:
