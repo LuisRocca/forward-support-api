@@ -83,6 +83,61 @@ Dos instancias, con propósitos distintos:
 El script `docker/postgres/init/01-extensions.sql` se ejecuta una única vez, al
 inicializar el volumen, e instala `citext` y `pg_trgm`.
 
+## Autenticación
+
+Dos tokens con propósitos distintos:
+
+| | Vida | Dónde viaja | Dónde se guarda |
+|---|---|---|---|
+| Access (JWT) | 15 min | `Authorization: Bearer` | en memoria del cliente, **nunca** en `localStorage` |
+| Refresh (opaco) | 7 días | cookie `httpOnly` | en base, solo su SHA-256 |
+
+El access token lleva el claim `tokenVersion` y el guard **lo compara contra
+Postgres en cada petición**. Es un lookup por clave primaria, y a cambio
+bloquear a un usuario surte efecto de inmediato en vez de "hasta dentro de un
+cuarto de hora". Cuando el volumen lo justifique, esa lectura se mueve a Redis
+sin tocar nada más.
+
+El refresh **rota en cada uso**. Si llega uno ya rotado se asume robo —el
+legítimo y el ladrón no pueden usar el mismo token dos veces— y se revoca la
+familia entera de sesiones.
+
+### Cuentas de prueba
+
+El seed activa tres cuentas **sobre usuarios que ya existen y ya tienen datos**,
+en vez de crear cuentas nuevas: un usuario recién creado entra y ve la bandeja
+vacía, y esa prueba no demuestra nada.
+
+```bash
+# En .env, sin valor por defecto: el seed falla si falta.
+SEED_PASSWORD=<la que quieras, mínimo 8 caracteres>
+pnpm db:seed
+```
+
+Al terminar imprime los tres emails. Hoy son `admin@forward.test`,
+`supervisor1@forward.test` y el agente con más carga real de los 100.000
+tickets, que es el que encabeza la consulta 6.
+
+El resto de los 40 usuarios **no pueden iniciar sesión**: en `password_hash`
+tienen un marcador, no un hash. Meter en el repositorio el hash de una
+contraseña conocida es meter una credencial válida en el repositorio.
+
+### Errores
+
+Todas las respuestas de error, incluidos los 500, siguen **RFC 9457**
+(`application/problem+json`). El campo `code` es el identificador estable sobre
+el que ramifica el cliente; `title` es texto para humanos y puede cambiar.
+
+Los tres códigos de 401 se distinguen a propósito, porque reintentar el refresh
+cuando la sesión está revocada es un bucle infinito:
+
+| `code` | Qué hace el cliente |
+|---|---|
+| `AUTH_TOKEN_EXPIRED` | renueva en `/auth/refresh` y reintenta una vez |
+| `AUTH_TOKEN_REVOKED` | cierra sesión |
+| `AUTH_USER_BLOCKED` | cierra sesión y muestra el motivo |
+| `AUTH_TOKEN_INVALID` | token ausente o ilegible: cierra sesión |
+
 ## Calidad
 
 ```bash
@@ -130,5 +185,6 @@ necesitan tipos: sin ese flag se aceptan en la configuración y no detectan nada
 - [x] Esquema Prisma y migraciones — 11 tablas, 3 enums
 - [x] Seed con volumen realista — 100.000 tickets y 659.000 filas de trazabilidad
 - [x] `queries.sql` — las 7 consultas del enunciado, ejecutadas y medidas
-- [ ] Autenticación y autorización por rol
-- [ ] Módulo de tickets
+- [x] Autenticación: sesiones rotativas, RFC 9457, CORS y rate limiting
+- [ ] Módulo de tickets y CRUD de lectura
+- [ ] Front React
