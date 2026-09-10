@@ -138,6 +138,17 @@ cuando la sesión está revocada es un bucle infinito:
 | `AUTH_USER_BLOCKED` | cierra sesión y muestra el motivo |
 | `AUTH_TOKEN_INVALID` | token ausente o ilegible: cierra sesión |
 
+## Documentación de la API
+
+Swagger UI en **`http://localhost:3000/docs`**, servida desde
+`docs/api-contract.yaml` tal cual: no se genera otro contrato desde
+decoradores, porque la fuente de verdad compartida con el front es el YAML. El
+fichero crudo está en `/docs/openapi.yaml`.
+
+Activa por defecto salvo con `NODE_ENV=production`; `DOCS_ENABLED=true` o
+`false` lo fuerza. En producción está apagada a propósito: publicar la
+superficie completa de la API es información gratis para quien mire.
+
 ## Imagen Docker
 
 ```bash

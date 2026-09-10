@@ -59,6 +59,9 @@ importers:
       rxjs:
         specifier: ^7.8.1
         version: 7.8.2
+      swagger-ui-express:
+        specifier: ^5.0.1
+        version: 5.0.1(express@5.2.1)
     devDependencies:
       '@nestjs/cli':
         specifier: ^12.0.0
@@ -87,6 +90,9 @@ importers:
       '@types/supertest':
         specifier: ^7.0.0
         version: 7.2.1
+      '@types/swagger-ui-express':
+        specifier: ^4.1.8
+        version: 4.1.8
       '@vitest/coverage-v8':
         specifier: ^4.1.2
         version: 4.1.11(vitest@4.1.11)
@@ -1050,6 +1056,9 @@ packages:
   '@rolldown/pluginutils@1.0.1':
     resolution: {integrity: sha512-2j9bGt5Jh8hj+vPtgzPtl72j0yRxHAyumoo6TNfAjsLB04UtpSvPbPcDcBMxz7n+9CYB0c1GxQFxYRg2jimqGw==}
 
+  '@scarf/scarf@1.4.0':
+    resolution: {integrity: sha512-xxeapPiUXdZAE3che6f3xogoJPeZgig6omHEy1rIY5WVsB3H2BHNnZH+gHG6x91SCWyQCzWGsuL2Hh3ClO5/qQ==}
+
   '@sindresorhus/is@4.6.0':
     resolution: {integrity: sha512-t09vSN3MdfsyCHoFcTRCH/iUtG7OJ0CsjzB8cjAmKc/va/kIgeDI/TxsigdncE/4be734m0cvIYwNaV4i2XqAw==}
     engines: {node: '>=10'}
@@ -1173,6 +1182,9 @@ packages:
 
   '@types/supertest@7.2.1':
     resolution: {integrity: sha512-4CbBvoYVLHL7+yhbYrZET0vsvuyXTC05aRe7dNQkwMzm56auceoy6Yu3K50uZmwfHna1os3CMSgM/3QVkUtPTw==}
+
+  '@types/swagger-ui-express@4.1.8':
+    resolution: {integrity: sha512-AhZV8/EIreHFmBV5wAs0gzJUNq9JbbSXgJLQubCC0jtIo6prnI9MIRRxnU4MZX9RB9yXxF1V4R7jtLl/Wcj31g==}
 
   '@types/validator@13.15.10':
     resolution: {integrity: sha512-T8L6i7wCuyoK8A/ZeLYt1+q0ty3Zb9+qbSSvrIVitzT3YjZqkTZ40IbRsPanlB4h1QB3JVL1SYCdR6ngtFYcuA==}
@@ -2616,6 +2628,15 @@ packages:
     resolution: {integrity: sha512-qpCAvRl9stuOHveKsn7HncJRvv501qIacKzQlO/+Lwxc9+0q2wLyv4Dfvt80/DPn2pqOBsJdDiogXGR9+OvwRw==}
     engines: {node: '>=8'}
 
+  swagger-ui-dist@5.32.15:
+    resolution: {integrity: sha512-TSFER+rFQlf1nzk6WvKkMaHTxAPQ3eAAxigFThnxQedSREanfZgSbJFayZVs/ULnSbNdrJOb99vLD6xpb3R3eg==}
+
+  swagger-ui-express@5.0.1:
+    resolution: {integrity: sha512-SrNU3RiBGTLLmFU8GIJdOdanJTl4TOmT27tt3bWWHppqYmAZ6IDuEuBvMU6nZq0zLEe6b/1rACXCgLZqO6ZfrA==}
+    engines: {node: '>= v0.10.32'}
+    peerDependencies:
+      express: '>=4.0.0 || >=5.0.0-beta'
+
   through@2.3.8:
     resolution: {integrity: sha512-w89qg7PI8wAdvX60bMDP+bFoD5Dvhm9oLheFp5O4a2QF0cSBGsBX4qZmadPMvVqlLJBBci+WqGGOAPvcDeNSVg==}
 
@@ -3567,6 +3588,8 @@ snapshots:
 
   '@rolldown/pluginutils@1.0.1': {}
 
+  '@scarf/scarf@1.4.0': {}
+
   '@sindresorhus/is@4.6.0': {}
 
   '@standard-schema/spec@1.1.0': {}
@@ -3702,6 +3725,11 @@ snapshots:
     dependencies:
       '@types/methods': 1.1.4
       '@types/superagent': 8.1.11
+
+  '@types/swagger-ui-express@4.1.8':
+    dependencies:
+      '@types/express': 5.0.6
+      '@types/serve-static': 2.2.0
 
   '@types/validator@13.15.10': {}
 
@@ -5200,6 +5228,15 @@ snapshots:
   supports-color@7.2.0:
     dependencies:
       has-flag: 4.0.0
+
+  swagger-ui-dist@5.32.15:
+    dependencies:
+      '@scarf/scarf': 1.4.0
+
+  swagger-ui-express@5.0.1(express@5.2.1):
+    dependencies:
+      express: 5.2.1
+      swagger-ui-dist: 5.32.15
 
   through@2.3.8: {}
 

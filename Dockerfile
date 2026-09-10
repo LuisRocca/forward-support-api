@@ -71,6 +71,9 @@ WORKDIR /app
 COPY --from=prod-deps --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/dist ./dist
 COPY --chown=node:node package.json ./
+# Para /docs si se activa con DOCS_ENABLED=true; por defecto está apagada en
+# producción.
+COPY --chown=node:node docs/api-contract.yaml ./docs/api-contract.yaml
 
 # Sin root: si alguien consigue ejecutar código en el proceso, no es root del
 # contenedor.

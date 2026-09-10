@@ -7,6 +7,7 @@ import cookieParser from 'cookie-parser';
 
 import { AppModule } from './app.module.js';
 import { crearValidationPipe } from './common/problem/validation.pipe.js';
+import { montarDocumentacion } from './docs/docs.js';
 import { EnvService } from './config/env.js';
 
 async function bootstrap(): Promise<void> {
@@ -28,6 +29,8 @@ async function bootstrap(): Promise<void> {
     // Sin esto el navegador recibe Retry-After y se la oculta al cliente.
     exposedHeaders: ['Retry-After'],
   });
+
+  if (env.docsHabilitados) montarDocumentacion(app);
 
   // Sin esto, SIGTERM no cierra el proceso: en un contenedor Node es el PID 1 y
   // no trae manejador por defecto para esa señal. ECS manda SIGTERM al

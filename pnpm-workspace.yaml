@@ -16,3 +16,6 @@ allowBuilds:
   esbuild: false
   msgpackr-extract: false
   workerd: false
+  # Telemetría de instalación (entra con swagger-ui-dist): su postinstall envía
+  # analítica a un servicio externo. No aporta nada al proyecto.
+  '@scarf/scarf': false

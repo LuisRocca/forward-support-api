@@ -24,6 +24,16 @@ export class EnvService {
     return this.nodeEnv === 'production';
   }
 
+  /**
+   * Swagger UI en /docs. Por defecto activa salvo en producción: publicar la
+   * superficie completa de la API ahí es información gratis para quien mire.
+   */
+  get docsHabilitados(): boolean {
+    const valor = this.config.get<string>('DOCS_ENABLED');
+    if (valor === undefined || valor.trim() === '') return !this.esProduccion;
+    return valor.trim() === 'true';
+  }
+
   get puerto(): number {
     return Number(this.config.get<string>('PORT') ?? 3000);
   }
