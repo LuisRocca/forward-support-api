@@ -279,6 +279,9 @@ paths:
     post:
       tags: [Tickets]
       summary: Crear un ticket
+      description: |
+        Crean admin, supervisor y agente. Un agente que crea un ticket queda
+        autoasignado: si no, no podría volver a verlo.
       requestBody:
         required: true
         content:
@@ -312,6 +315,10 @@ paths:
         Un agente solo puede actualizar tickets asignados a él. Esa comprobación
         es de PERTENENCIA, no de rol: verificar únicamente el rol es el fallo de
         autorización más común.
+
+        El supervisor no edita el contenido de los tickets: reasigna (`/assign`)
+        y comenta. Editar cualquier ticket es solo del admin, como fija el
+        enunciado.
       requestBody:
         required: true
         content:
@@ -362,6 +369,10 @@ paths:
         Endpoint propio por la misma razón que `assign`: cada transición se
         registra en el historial. Reabrir un ticket cerrado no es un estado
         nuevo: lo devuelve a `open` e incrementa `reopenedCount`.
+
+        Cerrar y reabrir son solo del admin (403 para el resto).
+        `resolved → in_progress` está permitido: deshace una resolución que el
+        cliente no aceptó, y no cuenta como reapertura.
 
         Una transición no permitida devuelve 409, no 422: la petición es válida,
         el estado del recurso es el que no la admite.
