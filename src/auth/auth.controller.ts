@@ -14,7 +14,8 @@ import type { ContextoPeticion } from './token.service.js';
 const COOKIE_REFRESH = 'refresh_token';
 
 // Los límites se leen del entorno al cargar el módulo: @Throttle es un decorador
-// y se evalúa antes de que exista inyección de dependencias.
+// y se evalúa antes de que exista inyección de dependencias. Por eso .env se
+// carga en src/config/load-env.ts antes que nada.
 //
 // El de login es más estricto que el de refresh porque es el que se ataca por
 // fuerza bruta. Es una defensa DISTINTA del bloqueo por intentos fallidos de la
@@ -39,7 +40,7 @@ export class AuthController {
   @Post('login')
   @HttpCode(200)
   // Límite estricto: el login es el endpoint que se ataca por fuerza bruta.
-  @Throttle({ auth: { limit: LIMITE_LOGIN, ttl: VENTANA_MS } })
+  @Throttle({ default: { limit: LIMITE_LOGIN, ttl: VENTANA_MS } })
   async login(
     @Body() dto: LoginDto,
     @Req() peticion: Request,
@@ -52,7 +53,7 @@ export class AuthController {
   @Publico()
   @Post('refresh')
   @HttpCode(200)
-  @Throttle({ auth: { limit: LIMITE_REFRESH, ttl: VENTANA_MS } })
+  @Throttle({ default: { limit: LIMITE_REFRESH, ttl: VENTANA_MS } })
   async refresh(
     @Req() peticion: Request,
     @Res({ passthrough: true }) respuesta: Response,

@@ -19,10 +19,13 @@ import { TicketsModule } from './tickets/tickets.module.js';
   imports: [
     ConfigModule,
     PrismaModule,
-    // Límite general de la API; los endpoints de /auth llevan el suyo, más
-    // estricto, con @Throttle.
+    // Límite general por IP para TODA la API. Tiene que dar margen a un SPA
+    // que pagina, abre detalles y refresca el dashboard; los endpoints de /auth
+    // lo sobrescriben con uno mucho más estricto vía @Throttle.
     ThrottlerModule.forRoot({
-      throttlers: [{ name: 'auth', ttl: 60_000, limit: 120 }],
+      throttlers: [
+        { name: 'default', ttl: 60_000, limit: Number(process.env['API_RATE_LIMIT'] ?? 600) },
+      ],
     }),
     ScheduleModule.forRoot(),
     AuthModule,

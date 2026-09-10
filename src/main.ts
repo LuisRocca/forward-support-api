@@ -1,3 +1,6 @@
+// Primero, siempre: ver src/config/load-env.ts.
+import './config/load-env.js';
+
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import cookieParser from 'cookie-parser';
