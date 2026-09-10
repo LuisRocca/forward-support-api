@@ -1,0 +1,18 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oxc-project/oxc/main/crates/oxc_linter/src/rules.rs",
+  "rules": {
+    // El proyecto está en TypeScript strict: un `any` explícito desactiva el
+    // tipado justo donde hace falta y contradice esa decisión.
+    "@typescript-eslint/no-explicit-any": "error",
+    // En error y no warn: una promesa flotante en un servicio de Nest es un
+    // error de base de datos que se traga en silencio, o un unhandled rejection
+    // que tumba el proceso. Un warning no rompe el pipeline, así que no protege.
+    // OJO: es una regla type-aware. Sin `oxlint --type-aware` (que necesita
+    // oxlint-tsgolint) se acepta en la configuración pero NO detecta nada.
+    "@typescript-eslint/no-floating-promises": "error",
+    "@typescript-eslint/no-misused-promises": "error"
+  },
+  "env": {
+    "node": true
+  }
+}

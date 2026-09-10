@@ -16,6 +16,13 @@
     "incremental": true,
     "skipLibCheck": true,
     "strict": true,
+    // Única excepción al strict, y es deliberada: los DTO de entrada declaran
+    // sus campos con decoradores de class-validator y sin inicializador, porque
+    // los rellena el ValidationPipe al deserializar el body. Con esta opción en
+    // true habría que poner `!` en cada campo de cada DTO, que es la misma
+    // aserción pero repetida y sin explicación. Todo lo demás de strict queda
+    // activo: los campos siguen siendo del tipo declarado, y lo que llega del
+    // exterior se valida en el borde, que es donde tiene que validarse.
     "strictPropertyInitialization": false,
     "types": ["vitest/globals", "node"]
   }

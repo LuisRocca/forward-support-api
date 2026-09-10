@@ -1,11 +1,14 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { App } from 'supertest/types';
+// El tipo del servidor sale de node:http y no de 'supertest/types': ese subpath
+// no está en los exports del paquete, así que con moduleResolution nodenext no
+// resuelve y tsc falla. nest build no lo veía porque excluye test/.
+import type { Server } from 'node:http';
 import { AppModule } from './../src/app.module.js';
 
 describe('AppController (e2e)', () => {
-  let app: INestApplication<App>;
+  let app: INestApplication<Server>;
 
   beforeEach(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({

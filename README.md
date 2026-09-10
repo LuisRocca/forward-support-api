@@ -15,7 +15,7 @@ Frontend en un repositorio aparte (`erp_forward`).
 | Base de datos | PostgreSQL 18 |
 | ORM / migraciones | Prisma 7 (driver adapter `pg`) |
 | Tests | Vitest (unitarios + e2e) |
-| Lint / formato | oxlint · Prettier |
+| Lint / formato | oxlint (`--type-aware`) · Prettier |
 | Paquetes | pnpm |
 
 ## Puesta en marcha
@@ -82,6 +82,21 @@ Dos instancias, con propósitos distintos:
 
 El script `docker/postgres/init/01-extensions.sql` se ejecuta una única vez, al
 inicializar el volumen, e instala `citext` y `pg_trgm`.
+
+## Calidad
+
+```bash
+pnpm lint        # oxlint --type-aware sobre src/, test/, prisma/
+pnpm typecheck   # tsc --noEmit sobre el proyecto entero
+pnpm build       # nest build (solo src/)
+pnpm test        # unitarios
+pnpm test:e2e    # end to end
+```
+
+`lint` y `typecheck` no son redundantes con `build`: `nest build` compila solo
+`src/`, así que por sí solo no garantiza que el proyecto entero tipe. Y el lint
+corre con `--type-aware` porque `no-floating-promises` y `no-misused-promises`
+necesitan tipos: sin ese flag se aceptan en la configuración y no detectan nada.
 
 ## Documentación
 

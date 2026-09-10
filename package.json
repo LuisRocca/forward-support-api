@@ -14,7 +14,7 @@
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
-    "lint": "oxlint src/ test/",
+    "lint": "oxlint --type-aware src/ test/ prisma/ prisma.config.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:cov": "vitest run --coverage",
@@ -33,7 +33,8 @@
     "sonar:up": "docker compose -f docker-compose.sonar.yml up -d",
     "sonar:down": "docker compose -f docker-compose.sonar.yml down",
     "sonar:logs": "docker compose -f docker-compose.sonar.yml logs -f sonarqube",
-    "sonar:scan": "docker run --rm --network forward-quality_default --env-file .env -e SONAR_HOST_URL=http://sonarqube:9000 -v \"$PWD:/usr/src:z\" sonarsource/sonar-scanner-cli"
+    "sonar:scan": "docker run --rm --network forward-quality_default --env-file .env -e SONAR_HOST_URL=http://sonarqube:9000 -v \"$PWD:/usr/src:z\" sonarsource/sonar-scanner-cli",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
     "@nestjs/common": "^12.0.1",
@@ -58,6 +59,7 @@
     "@vitest/coverage-v8": "^4.1.2",
     "dotenv": "^17.4.2",
     "oxlint": "^1.58.0",
+    "oxlint-tsgolint": "^7.0.2001",
     "prettier": "^3.4.2",
     "prisma": "7.10.0",
     "source-map-support": "^0.5.21",
