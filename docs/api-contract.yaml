@@ -110,6 +110,14 @@ info:
     token ilegible devuelto como "expirado" mandaría al cliente a refrescar en
     vano, y como el refresh no arregla un token malformado, entraría en bucle.
 
+    ## Cómo debe reaccionar el cliente a un 409
+
+    | `code` | Cuándo | Qué hacer |
+    |---|---|---|
+    | `INVALID_STATUS_TRANSITION` | El destino no está permitido desde el estado actual | Mostrar el mensaje. No reintentar |
+    | `CONFLICT` | El ticket cambió entre la lectura y la escritura (concurrencia optimista, resuelta en el servidor; el cliente no manda versión) | Mostrar el mensaje y recargar el ticket |
+    | `TICKET_CLOSED` | Editar o reasignar un ticket cerrado | Mostrar el mensaje. Reabrir es solo del admin |
+
 servers:
   - url: http://localhost:3000
     description: Desarrollo local
@@ -373,6 +381,19 @@ paths:
         Cerrar y reabrir son solo del admin (403 para el resto).
         `resolved → in_progress` está permitido: deshace una resolución que el
         cliente no aceptó, y no cuenta como reapertura.
+
+        Máquina de estados (fuente de verdad en el servidor):
+
+        | Desde | Hacia |
+        |---|---|
+        | open | in_progress, pending_customer, resolved |
+        | in_progress | open, pending_customer, resolved |
+        | pending_customer | in_progress, resolved |
+        | resolved | in_progress, closed (admin) |
+        | closed | open (admin, reapertura) |
+
+        El cliente no replica esta tabla: usa `allowedStatusTransitions` del
+        detalle, que ya aplica rol y pertenencia.
 
         Una transición no permitida devuelve 409, no 422: la petición es válida,
         el estado del recurso es el que no la admite.
@@ -822,9 +843,17 @@ components:
       allOf:
         - { $ref: '#/components/schemas/TicketSummary' }
         - type: object
-          required: [description, createdBy, reopenedCount, reassignmentCount, commentCount]
+          required: [description, createdBy, reopenedCount, reassignmentCount, commentCount, allowedStatusTransitions]
           properties:
             description: { type: string }
+            allowedStatusTransitions:
+              type: array
+              items: { $ref: '#/components/schemas/TicketStatus' }
+              description: |
+                Estados a los que QUIEN PREGUNTA puede mover este ticket ahora:
+                máquina de estados ∩ rol ∩ pertenencia. Calculado en el servidor
+                para que el cliente no duplique la regla. Vacío si no puede
+                cambiar el estado.
             commentCount:
               type: integer
               description: |
