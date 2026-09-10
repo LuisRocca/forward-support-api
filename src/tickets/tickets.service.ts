@@ -12,6 +12,7 @@ import { veTodosLosTickets } from '../auth/permissions.js';
 import { Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { ListTicketsDto, Orden } from './dto/list-tickets.dto.js';
+import { transicionesPermitidas } from './status-transitions.js';
 import { ESTADOS_ABIERTOS } from './ticket-states.js';
 import {
   SELECT_DETAIL,
@@ -87,7 +88,11 @@ export class TicketsService {
       where: { ticketId: id, deletedAt: null },
     });
 
-    return aDetail(ticket, commentCount);
+    return aDetail(
+      ticket,
+      commentCount,
+      transicionesPermitidas(ticket.status, usuario, ticket.assignedTo?.id ?? null),
+    );
   }
 
   /**

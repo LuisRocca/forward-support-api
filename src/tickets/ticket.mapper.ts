@@ -40,6 +40,8 @@ export interface TicketSummary {
 
 export interface TicketDetail extends TicketSummary {
   description: string;
+  /** Estados a los que quien pregunta puede mover el ticket (ver status-transitions.ts). */
+  allowedStatusTransitions: TicketStatus[];
   commentCount: number;
   createdBy: UserRef;
   resolvedBy: UserRef | null;
@@ -132,10 +134,15 @@ type FilaDetail = FilaSummary & {
   resolvedBy: UserRef | null;
 };
 
-export function aDetail(fila: FilaDetail, commentCount: number): TicketDetail {
+export function aDetail(
+  fila: FilaDetail,
+  commentCount: number,
+  allowedStatusTransitions: TicketStatus[],
+): TicketDetail {
   return {
     ...aSummary(fila),
     description: fila.description,
+    allowedStatusTransitions,
     commentCount,
     createdBy: fila.createdBy,
     resolvedBy: fila.resolvedBy,
