@@ -27,14 +27,14 @@ export type CodigoRol = 'admin' | 'supervisor' | 'agent';
 
 const PERMISOS_POR_ROL: Record<CodigoRol, readonly Permiso[]> = {
   admin: Object.values(Permiso),
-  // Sin TICKET_ACTUALIZAR: el enunciado da "actualizar cualquier ticket" solo
-  // al admin. El supervisor crea, reasigna, cambia estado y comenta, pero no
-  // edita el contenido de un ticket.
+  // Sin TICKET_ACTUALIZAR ni TICKET_CAMBIAR_ESTADO: el enunciado da
+  // "actualizar cualquier ticket" solo al admin, y el cambio de estado al agente
+  // sobre sus asignados y al admin sobre cualquiera. El supervisor ve todo,
+  // crea, reasigna y comenta.
   supervisor: [
     Permiso.TICKET_LEER_TODOS,
     Permiso.TICKET_CREAR,
     Permiso.TICKET_ASIGNAR,
-    Permiso.TICKET_CAMBIAR_ESTADO,
     Permiso.COMENTARIO_CREAR,
     Permiso.COMENTARIO_LEER_INTERNOS,
     Permiso.USUARIO_LEER,
