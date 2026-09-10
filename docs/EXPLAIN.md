@@ -1,4 +1,4 @@
-# Mediciones reales — las consultas 3 y 7 sobre 100.000 tickets
+# Mediciones reales — las consultas de queries.sql sobre 100.000 tickets
 
 > No son estimaciones. Salen de ejecutar `EXPLAIN (ANALYZE, BUFFERS)` contra
 > `forward_db_dev` (PostgreSQL 18.6, puerto 5442) con el volumen que genera
@@ -267,7 +267,7 @@ Medidas también, para no afirmar de memoria lo que hace el planificador:
 
 Dos cosas que conviene decir en voz alta porque contradicen la intuición:
 
-- **La consulta 1 es la más lenta de las siete** (56,9 ms), no la 3 ni la 7. Las
+- **La consulta 1 es la más lenta de las ocho** (56,9 ms), no la 3 ni la 7. Las
   que dan miedo por el enunciado son justo las que quedaron en menos de 1 ms; las
   caras son las agregaciones globales, que ningún índice arregla porque tienen que
   leer la tabla completa por definición. Lo que las arregla es no ejecutarlas en
@@ -280,3 +280,37 @@ Dos cosas que conviene decir en voz alta porque contradicen la intuición:
   25 ms y añadir índices que nadie ha medido como necesarios es la otra forma de
   equivocarse; queda anotado como lo primero que hay que medir cuando el histórico
   crezca.
+
+---
+
+## Consulta 8 — porcentaje de cerrados sobre los creados en 30 días
+
+```
+ Aggregate  (actual time=12.980..12.981 rows=1.00 loops=1)
+   Buffers: shared hit=3464 read=39
+   ->  Bitmap Heap Scan on tickets  (actual time=8.150..12.689 rows=5525.00 loops=1)
+         Recheck Cond: (created_at >= (now() - '30 days'::interval))
+         Filter: (deleted_at IS NULL)
+         Heap Blocks: exact=3446
+         ->  Bitmap Index Scan on idx_tickets_reasignados  (actual time=7.827..7.827 rows=5525.00 loops=1)
+               Index Cond: (created_at >= (now() - '30 days'::interval))
+               Index Searches: 6
+ Execution Time: 13.106 ms
+```
+
+**Resultado:** 5.525 creados, 2.935 cerrados, **53,1%** (lectura por cohorte;
+la de flujo da 60,9%, explicada en `queries.sql`).
+
+**Lectura del plan:** 3.503 buffers, ~13 ms. Solo lee la ventana de 30 días, no
+la tabla entera: el filtro por `created_at` es selectivo (5,5% de las filas).
+
+El detalle curioso es el índice que elige. No es `idx_tickets_created_at_id`,
+que empieza por `created_at`, sino `idx_tickets_reasignados`
+`(reassignment_count DESC, created_at DESC)`, con **`Index Searches: 6`**. Es el
+*skip scan* que trae PostgreSQL 18: la primera columna solo tiene 6 valores
+distintos (0 a 5), así que el planificador hace una búsqueda por rango sobre
+`created_at` dentro de cada uno. Antes de la 18 ese índice no servía para esta
+consulta. Da el mismo coste que el otro; no hace falta forzar nada.
+
+Con millones de tickets el coste crece con los creados en la ventana, no con el
+histórico, que es la propiedad que importa.

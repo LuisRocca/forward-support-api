@@ -1,5 +1,5 @@
 -- =============================================================================
---  Las 7 consultas del enunciado
+--  Las 8 consultas del enunciado
 --  Plataforma de gestión de tickets de soporte — PostgreSQL 18
 -- =============================================================================
 --
@@ -242,3 +242,33 @@ WHERE t.reassignment_count > 2
   AND t.deleted_at IS NULL
 ORDER BY t.reassignment_count DESC, t.created_at DESC
 LIMIT 100;
+
+
+-- -----------------------------------------------------------------------------
+-- 8. Porcentaje de tickets cerrados frente al total de creados en los últimos
+--    30 días.
+-- -----------------------------------------------------------------------------
+-- LA DECISIÓN: lectura por COHORTE. Denominador: tickets creados en la ventana.
+-- Numerador: cuántos de ESOS mismos tickets están hoy cerrados. Así el
+-- porcentaje nunca pasa de 100 y responde algo concreto: "de lo que entró este
+-- mes, qué parte ya se cerró".
+--
+-- La otra lectura, la de FLUJO, divide los cerrados DURANTE la ventana
+-- (closed_at en los 30 días, de cualquier fecha de creación) entre los creados
+-- en la ventana. Mide si el equipo cierra al ritmo que entra trabajo, pero
+-- mezcla poblaciones distintas y puede superar el 100% cuando se liquida
+-- atraso. Sobre los datos de prueba: cohorte 53,1% (2.935 de 5.525), flujo
+-- 60,9% (3.365 cerrados en la ventana). Si el negocio pregunta por capacidad
+-- del equipo, es la de flujo:
+--     count(*) FILTER (WHERE closed_at >= now() - interval '30 days')
+--
+-- Ventana vacía: NULLIF convierte la división por cero en NULL. Es la respuesta
+-- honesta —"no hay datos"—; un 0% diría que no se cerró nada de lo que entró.
+SELECT
+  count(*)                                                     AS creados,
+  count(*) FILTER (WHERE t.status = 'closed')                  AS cerrados,
+  round(100.0 * count(*) FILTER (WHERE t.status = 'closed')
+        / NULLIF(count(*), 0), 1)                              AS porcentaje_cerrados
+FROM tickets t
+WHERE t.created_at >= now() - interval '30 days'
+  AND t.deleted_at IS NULL;

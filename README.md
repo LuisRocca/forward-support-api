@@ -159,8 +159,8 @@ necesitan tipos: sin ese flag se aceptan en la configuración y no detectan nada
 |---|---|
 | [`docs/DECISIONES-TECNICAS.md`](docs/DECISIONES-TECNICAS.md) | Decisiones de arquitectura y modelo, cada una con su justificación, su costo asumido y las condiciones bajo las que la cambiaría. |
 | [`docs/modelo-er-soporte.ddb`](docs/modelo-er-soporte.ddb) | Modelo entidad-relación. Se abre en [drawdb.app](https://drawdb.app) con *File → Import diagram*. |
-| [`queries.sql`](queries.sql) | Las 7 consultas del enunciado, en SQL plano, cada una con la decisión no obvia comentada. |
-| [`docs/EXPLAIN.md`](docs/EXPLAIN.md) | `EXPLAIN (ANALYZE, BUFFERS)` real de las 7 consultas sobre 100.000 tickets. Es la respuesta medida a "¿y con millones de registros?". |
+| [`queries.sql`](queries.sql) | Las 8 consultas del enunciado, en SQL plano, cada una con la decisión no obvia comentada. |
+| [`docs/EXPLAIN.md`](docs/EXPLAIN.md) | `EXPLAIN (ANALYZE, BUFFERS)` real de las consultas sobre 100.000 tickets. Es la respuesta medida a "¿y con millones de registros?". |
 | [`docs/KNOWN_ISSUES.md`](docs/KNOWN_ISSUES.md) | Problemas ya diagnosticados y resueltos, con su causa. Consultar antes de depurar. |
 
 ## Uso de herramientas de IA
@@ -184,7 +184,7 @@ necesitan tipos: sin ese flag se aceptan en la configuración y no detectan nada
 - [x] Entorno Postgres (desarrollo + pruebas)
 - [x] Esquema Prisma y migraciones — 11 tablas, 3 enums
 - [x] Seed con volumen realista — 100.000 tickets y 659.000 filas de trazabilidad
-- [x] `queries.sql` — las 7 consultas del enunciado, ejecutadas y medidas
+- [x] `queries.sql` — las 8 consultas del enunciado, ejecutadas y medidas
 - [x] Autenticación: sesiones rotativas, RFC 9457, CORS y rate limiting
 - [ ] Módulo de tickets y CRUD de lectura
 - [ ] Front React
