@@ -4,6 +4,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerModule } from '@nestjs/throttler';
 
 import { AuthModule } from './auth/auth.module.js';
+import { HealthModule } from './health/health.module.js';
 import { CatalogModule } from './catalog/catalog.module.js';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard.js';
 import { PermissionsGuard } from './auth/guards/permissions.guard.js';
@@ -34,6 +35,7 @@ import { UsersModule } from './users/users.module.js';
     CatalogModule,
     MetricsModule,
     UsersModule,
+    HealthModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: ProblemFilter },

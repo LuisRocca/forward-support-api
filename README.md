@@ -138,6 +138,21 @@ cuando la sesión está revocada es un bucle infinito:
 | `AUTH_USER_BLOCKED` | cierra sesión y muestra el motivo |
 | `AUTH_TOKEN_INVALID` | token ausente o ilegible: cierra sesión |
 
+## Healthcheck
+
+`GET /health` es público, no pasa por el rate limiting y responde:
+
+| Estado | Cuándo |
+|---|---|
+| `200 {"status":"ok","database":"up"}` | la base responde a `SELECT 1` en menos de 2 s |
+| `503` (RFC 9457, `SERVICE_UNAVAILABLE`) | la base no responde o tarda más |
+
+Es el que usan el balanceador (ALB) y el `HEALTHCHECK` de la imagen. No va
+limitado porque un 429 haría que el balanceador diera la instancia por caída,
+y tiene timeout propio porque un healthcheck que no contesta es peor que uno
+que dice 503. El error de la base no aparece en la respuesta: el endpoint es
+público.
+
 ## Calidad
 
 ```bash
