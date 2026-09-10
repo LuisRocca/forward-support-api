@@ -57,9 +57,27 @@ se diseñó contra la consulta y no al revés:
 2. **`tickets.reassignment_count`** — la query 7 (reasignados >2 veces) desde
    `ticket_assignments` es un `GROUP BY ... HAVING count(*) > 2` sobre el historial
    completo. Con millones de tickets eso es una agregación masiva por consulta.
-   El contador desnormalizado la convierte en un index scan. Se actualiza en la
-   **misma transacción** que inserta en `ticket_assignments` — sin transacción,
-   la desnormalización es una mentira esperando a pasar.
+   El contador desnormalizado evita esa agregación, y se actualiza en la **misma
+   transacción** que inserta en `ticket_assignments` — sin transacción, la
+   desnormalización es una mentira esperando a pasar.
+
+   **Corrección tras medir sobre 100.000 tickets:** el contador por sí solo no
+   arregla nada. Sin un índice sobre esa columna, la consulta sigue leyendo la
+   tabla entera y lee *más* páginas que la agregación que pretendía evitar:
+
+   | Variante | Páginas leídas | Plan |
+   |---|---|---|
+   | Contador, sin índice | 5.278 | Seq Scan + Sort |
+   | Agregando `ticket_assignments` | 2.444 | Seq Scan + HashAggregate |
+   | **Contador, con índice** | **103** | **Index Scan, sin Sort** |
+
+   Con el índice `(reassignment_count DESC, created_at DESC)` la consulta baja a
+   ~0,7 ms. Sin él, la desnormalización solo aporta complejidad de escritura.
+
+   La lección general, y es la que vale más que el caso concreto:
+   **desnormalizar sin indexar la columna desnormalizada no es una optimización,
+   es solo una copia del dato que hay que mantener sincronizada.** El beneficio
+   no vino de duplicar el dato, sino del índice que ese dato hizo posible.
 
 3. **`tickets.resolved_by_user_id`** — la query 4 pide el usuario con más tickets
    resueltos. Usar `assigned_to_user_id` sería incorrecto: un ticket puede reasignarse
