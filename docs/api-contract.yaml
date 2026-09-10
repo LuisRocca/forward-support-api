@@ -378,7 +378,9 @@ paths:
         registra en el historial. Reabrir un ticket cerrado no es un estado
         nuevo: lo devuelve a `open` e incrementa `reopenedCount`.
 
-        Cerrar y reabrir son solo del admin (403 para el resto).
+        Cambian estado: el admin (cualquier ticket) y el agente (solo sus
+        asignados). El supervisor no: reasigna y comenta, como fija el
+        enunciado. Cerrar y reabrir son solo del admin (403 para el resto).
         `resolved → in_progress` está permitido: deshace una resolución que el
         cliente no aceptó, y no cuenta como reapertura.
 
