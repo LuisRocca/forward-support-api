@@ -180,8 +180,12 @@ async function sembrarTickets(prisma: PrismaClient): Promise<void> {
 
   await prisma.$transaction(
     async (tx) => {
-      await tx.$executeRawUnsafe(`SELECT set_config('seed.tickets', $1, true)`, String(TICKETS));
+      await tx.$executeRaw`SELECT set_config('seed.tickets', ${String(TICKETS)}, true)`;
       for (const sentencia of sentencias) {
+        // Unsafe a propósito y acotado: el texto es SQL completo leído de
+        // prisma/seed-tickets.sql, un fichero versionado del repositorio, sin
+        // ninguna entrada externa. No hay valores que parametrizar: la única
+        // variable (el número de tickets) va arriba, parametrizada.
         await tx.$executeRawUnsafe(sentencia);
       }
     },

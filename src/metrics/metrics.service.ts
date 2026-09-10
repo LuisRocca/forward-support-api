@@ -82,7 +82,7 @@ export class MetricsService implements OnApplicationBootstrap {
   @Cron(CronExpression.EVERY_5_MINUTES)
   async refrescar(): Promise<void> {
     try {
-      await this.prisma.$executeRawUnsafe('REFRESH MATERIALIZED VIEW CONCURRENTLY dashboard_metrics');
+      await this.prisma.$executeRaw`REFRESH MATERIALIZED VIEW CONCURRENTLY dashboard_metrics`;
     } catch (error) {
       // Que falle un refresco no puede tumbar la aplicación: el dashboard
       // seguirá sirviendo los datos anteriores, y generated_at lo delata.
