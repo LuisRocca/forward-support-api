@@ -34,6 +34,33 @@ info:
     cambiar su contraseña, el servidor incrementa esa versión y todo token
     emitido antes queda inválido de inmediato, sin esperar a que expire.
 
+    ## CORS y cookies
+
+    El cliente envía `credentials: 'include'` en todas las peticiones: sin eso
+    el navegador no adjunta la cookie `refresh_token` y el refresh no funciona.
+    Para que el navegador no descarte la respuesta, la API debe responder:
+
+    - `Access-Control-Allow-Credentials: true`
+    - `Access-Control-Allow-Origin` con un origen **concreto, nunca `*`**. Con
+      credenciales de por medio, el comodín hace que el navegador rechace la
+      respuesta entera. En desarrollo, `http://localhost:5173`.
+
+    El origen se configura por entorno (`CORS_ORIGIN`), jamás hardcodeado, y en
+    producción es una lista blanca explícita.
+
+    ## Restricción de despliegue: SameSite
+
+    La cookie de refresh usa `SameSite=Strict`. En local no hay problema, porque
+    `localhost:5173` y `localhost:3000` son same-site — el puerto no cuenta para
+    SameSite. En producción sí importa, y hay que decidirlo ANTES de desplegar:
+
+    - **Front y API bajo el mismo dominio registrable** (`app.ejemplo.com` y
+      `api.ejemplo.com`): `Strict` funciona sin tocar nada. **Opción recomendada.**
+    - **Dominios registrables distintos**: `Strict` haría que la cookie no se
+      enviase nunca y el refresh dejaría de funcionar **en silencio**, sin error
+      visible. Obligaría a `SameSite=None; Secure`, lo que reabre la superficie
+      de CSRF y exige añadir defensa explícita contra ella.
+
     ## Cómo debe reaccionar el cliente a un 401
 
     El código dentro del cuerpo del error decide la reacción, y la distinción
@@ -618,11 +645,15 @@ components:
 
     PageInfo:
       type: object
-      required: [hasMore]
+      required: [hasMore, nextCursor]
       properties:
         nextCursor:
           type: [string, 'null']
-          description: Se pasa como `cursor` para la siguiente página. `null` si no hay más.
+          description: |
+            Siempre presente. Se pasa como `cursor` para pedir la siguiente
+            página, y vale `null` cuando no hay más. Obligatorio y nullable en
+            vez de opcional: así el cliente distingue "no hay más páginas" de
+            "el servidor no me lo mandó", que son cosas distintas.
         hasMore: { type: boolean }
 
     UserRef:
