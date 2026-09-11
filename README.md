@@ -1,243 +1,344 @@
 # Plataforma de Soporte — API
 
-API REST para la gestión de tickets de soporte: registrar, consultar, asignar
-y dar seguimiento, con trazabilidad y control de acceso por rol.
+API REST para la gestión de tickets de soporte: registrar, consultar, asignar y
+dar seguimiento, con trazabilidad completa y control de acceso por rol.
 
-Prueba técnica — Tech Lead Full Stack JavaScript.
-Frontend en un repositorio aparte (`erp_forward`).
+> Prueba técnica · Tech Lead Full Stack JavaScript.
+> El frontend vive en un repositorio aparte (`erp_forward`) y consume esta API a
+> través de un contrato OpenAPI compartido.
+
+**Lo esencial en 30 segundos**
+
+- **8 consultas del enunciado** resueltas en SQL plano y **medidas** sobre 100.000
+  tickets: las dos que dan miedo por volumen (estancados y reasignados) responden
+  en menos de 1 ms. → [`queries.sql`](queries.sql) · [`docs/EXPLAIN.md`](docs/EXPLAIN.md)
+- **Bloqueo de usuario inmediato**, no "cuando caduque el token": versión de
+  token comprobada en cada petición y sesiones rotativas con detección de robo.
+- **Autorización por rol y por pertenencia**: un agente no ve ni toca tickets
+  ajenos, y el servidor responde 404 (no 403) para no confirmar que existen.
+- **Contrato primero**: la API se construyó contra `docs/api-contract.yaml`, el
+  mismo fichero contra el que construye el front y el que sirve Swagger.
+- **55 tests unitarios + 27 e2e**, validados con mutaciones: se comprobó que
+  fallan cuando se rompe la regla que cubren.
+
+---
+
+## Contenido
+
+1. [Stack](#stack)
+2. [Arquitectura](#arquitectura)
+3. [Puesta en marcha](#puesta-en-marcha)
+4. [Configuración](#configuración)
+5. [Cuentas de prueba](#cuentas-de-prueba)
+6. [API](#api)
+7. [Roles y permisos](#roles-y-permisos)
+8. [Datos y rendimiento](#datos-y-rendimiento)
+9. [Calidad](#calidad)
+10. [Contenedor y despliegue](#contenedor-y-despliegue)
+11. [Estructura del repositorio](#estructura-del-repositorio)
+12. [Documentación](#documentación)
+13. [Uso de herramientas de IA](#uso-de-herramientas-de-ia)
+14. [Estado](#estado)
+
+---
 
 ## Stack
 
 | Capa | Elección |
 |---|---|
 | Runtime | Node.js 24 |
-| Framework | NestJS 12 · TypeScript strict |
-| Base de datos | PostgreSQL 18 |
-| ORM / migraciones | Prisma 7 (driver adapter `pg`) |
-| Tests | Vitest (unitarios + e2e) |
-| Lint / formato | oxlint (`--type-aware`) · Prettier |
+| Framework | NestJS 12 · TypeScript en modo `strict` |
+| Base de datos | PostgreSQL 18 (`citext`, `pg_trgm`, `uuidv7()` nativo) |
+| ORM / migraciones | Prisma 7 con driver adapter `pg` |
+| Autenticación | JWT de acceso + refresh opaco en cookie `httpOnly` · argon2id |
+| Tests | Vitest (unitarios y e2e con Supertest) |
+| Calidad | oxlint `--type-aware` · Prettier · SonarQube |
+| Contenedores | Docker/Podman multi-etapa · Docker Compose para la infraestructura local |
 | Paquetes | pnpm |
+
+## Arquitectura
+
+Monolito modular en NestJS, sin estado (la sesión vive en base de datos), con
+PostgreSQL como única fuente de verdad. Cada petición atraviesa una cadena fija:
+
+```
+traza → rate limiting → autenticación → permisos por rol → validación → controlador → servicio (pertenencia) → Prisma
+                                        cualquier error ──────────────────────────────→ RFC 9457
+```
+
+El detalle —módulos, flujos de autenticación, máquina de estados, modelo de
+datos, despliegue en AWS y los patrones aplicados— está en
+**[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)** (en inglés). El porqué de
+cada decisión, en **[`docs/DECISIONES-TECNICAS.md`](docs/DECISIONES-TECNICAS.md)**.
 
 ## Puesta en marcha
 
+**Requisitos:** Node.js 24, pnpm 11 y Docker o Podman.
+
 ```bash
 pnpm install
-cp .env.example .env          # ajustar los secretos JWT
-pnpm db:up                    # levanta Postgres dev + test
+cp .env.example .env          # definir JWT_ACCESS_SECRET y SEED_PASSWORD
+pnpm db:up                    # Postgres de desarrollo y de pruebas
 pnpm db:migrate               # aplica las migraciones
-pnpm db:seed                  # ~100.000 tickets con distribución realista
-pnpm start:dev
+pnpm db:seed                  # ~100.000 tickets con distribución realista (~25 s)
+pnpm start:dev                # API en http://localhost:3000, con hot reload
 ```
+
+Documentación interactiva en **http://localhost:3000/docs**.
 
 | Servicio | Puerto | Notas |
 |---|---|---|
-| API | 3000 | corre fuera del contenedor, con hot reload |
-| Postgres dev | **5442** | persistente en volumen |
-| Postgres test | **5443** | efímero, en RAM |
+| API | 3000 | fuera del contenedor, con hot reload |
+| Postgres desarrollo | **5442** | persistente en volumen |
+| Postgres pruebas | **5443** | efímero, en RAM |
 | Adminer | 8080 | opcional: `pnpm db:tools` |
+| SonarQube | 9000 | opcional: `pnpm sonar:up` |
 
-Puertos 5442/5443 en lugar de los habituales 5432/5433 a propósito: una máquina
-de desarrollo casi siempre tiene ya un Postgres local u otro proyecto ocupándolos.
+Los puertos 5442/5443 en vez de los habituales 5432/5433 son deliberados: una
+máquina de desarrollo casi siempre tiene ya un Postgres local ocupándolos.
 
-### Scripts de base de datos
+La base de pruebas vive en `tmpfs` con `fsync=off`: se pierde al parar el
+contenedor, que es justo lo que se quiere de una base de pruebas, y la suite
+corre mucho más rápido. La suite e2e la migra sola al arrancar.
 
-```bash
-pnpm db:up       # levantar dev + test
-pnpm db:down     # parar (conserva los datos de dev)
-pnpm db:reset    # borrar volúmenes y empezar de cero
-pnpm db:psql     # abrir psql contra la base de desarrollo
-pnpm db:logs     # seguir los logs de Postgres
-```
+## Configuración
 
-### Esquema y datos
+Toda la configuración entra por variables de entorno. **Ningún secreto tiene
+valor por defecto**: si falta, la aplicación no arranca, en vez de caer en
+silencio a un valor conocido.
 
-```bash
-pnpm db:migrate         # crear/aplicar migraciones (prisma migrate dev)
-pnpm db:migrate:deploy  # aplicar sin generar (despliegue)
-pnpm db:generate        # regenerar el cliente en generated/prisma
-pnpm db:seed            # sembrar datos
-```
+| Variable | Obligatoria | Uso |
+|---|---|---|
+| `DATABASE_URL` | sí | Conexión a PostgreSQL |
+| `JWT_ACCESS_SECRET` | sí | Firma del access token (`openssl rand -base64 48`) |
+| `CORS_ORIGIN` | sí | Orígenes permitidos, separados por comas. Nunca `*`: con credenciales, el navegador lo rechaza |
+| `SEED_PASSWORD` | para el seed | Contraseña de las cuentas de prueba. Sin default a propósito |
+| `DATABASE_URL_TEST` | para e2e | Base de pruebas; la suite se niega a correr si no acaba en `_test` |
+| `PORT`, `NODE_ENV` | no | `3000`, `development` |
+| `JWT_ACCESS_TTL`, `JWT_REFRESH_TTL` | no | `15m`, `7d` |
+| `ARGON_MEMORY_COST` | no | Memoria de argon2id en KiB (`19456`) |
+| `AUTH_MAX_FAILED_ATTEMPTS`, `AUTH_LOCKOUT_MINUTES` | no | Bloqueo por fuerza bruta (`5`, `15`) |
+| `AUTH_RATE_LIMIT_LOGIN`, `AUTH_RATE_LIMIT_REFRESH` | no | Peticiones/min por IP en `/auth` (`5`, `30`) |
+| `API_RATE_LIMIT` | no | Peticiones/min por IP en el resto (`600`) |
+| `DOCS_ENABLED` | no | Swagger en `/docs`. Por defecto activo salvo en producción |
 
-El seed son dos mitades: catálogos y usuarios por el cliente de Prisma
-(idempotentes, con `upsert`) y los tickets en SQL, porque son ~100.000 filas más
-su trazabilidad y hacerlo desde Node serían cientos de miles de idas y vueltas.
-Tarda unos 25 segundos y es reproducible (`setseed`). Regenera los tickets desde
-cero en cada ejecución; para un volumen menor, `TICKETS=5000 pnpm db:seed`.
+`JWT_REFRESH_SECRET` aparece en `.env.example` pero **no se usa**: el refresh
+token es un valor opaco aleatorio, no un JWT.
 
-Los usuarios sembrados **no pueden iniciar sesión**: en `password_hash` queda un
-marcador, no un hash. Meter el hash de una password conocida en el repositorio es
-meter una credencial válida en el repositorio. Los hashes reales (argon2id) los
-siembra el módulo de autenticación.
-
-## Entornos de base de datos
-
-Dos instancias, con propósitos distintos:
-
-- **`db`** — desarrollo. Volumen persistente, configuración por defecto.
-- **`db_test`** — pruebas de integración. Vive en `tmpfs` (RAM) y arranca con
-  `fsync=off`, `synchronous_commit=off` y `full_page_writes=off`. Se pierde
-  al parar el contenedor, que es exactamente lo que se quiere de una base de
-  pruebas, y a cambio la suite corre notablemente más rápido. Esa configuración
-  sería inaceptable en producción: sacrifica durabilidad ante un corte.
-
-El script `docker/postgres/init/01-extensions.sql` se ejecuta una única vez, al
-inicializar el volumen, e instala `citext` y `pg_trgm`.
-
-## Autenticación
-
-Dos tokens con propósitos distintos:
-
-| | Vida | Dónde viaja | Dónde se guarda |
-|---|---|---|---|
-| Access (JWT) | 15 min | `Authorization: Bearer` | en memoria del cliente, **nunca** en `localStorage` |
-| Refresh (opaco) | 7 días | cookie `httpOnly` | en base, solo su SHA-256 |
-
-El access token lleva el claim `tokenVersion` y el guard **lo compara contra
-Postgres en cada petición**. Es un lookup por clave primaria, y a cambio
-bloquear a un usuario surte efecto de inmediato en vez de "hasta dentro de un
-cuarto de hora". Cuando el volumen lo justifique, esa lectura se mueve a Redis
-sin tocar nada más.
-
-El refresh **rota en cada uso**. Si llega uno ya rotado se asume robo —el
-legítimo y el ladrón no pueden usar el mismo token dos veces— y se revoca la
-familia entera de sesiones.
-
-### Cuentas de prueba
+## Cuentas de prueba
 
 El seed activa tres cuentas **sobre usuarios que ya existen y ya tienen datos**,
-en vez de crear cuentas nuevas: un usuario recién creado entra y ve la bandeja
+en lugar de crear cuentas nuevas: un usuario recién creado entra y ve la bandeja
 vacía, y esa prueba no demuestra nada.
 
+| Rol | Email | Qué verás |
+|---|---|---|
+| Administrador | `admin@forward.test` | Todo |
+| Supervisor | `supervisor1@forward.test` | Toda la operación, sin editar ni cambiar estados |
+| Agente | el que imprime el seed | El agente con más carga real de los 100.000 tickets (~850 abiertos) |
+
+La contraseña de las tres es tu `SEED_PASSWORD`. El resto de los 40 usuarios
+**no pueden iniciar sesión**: en `password_hash` llevan un marcador, no un hash.
+Guardar en el repositorio el hash de una contraseña conocida sería guardar una
+credencial válida.
+
+## API
+
+Documentación interactiva: **`/docs`** (Swagger UI), generada desde
+[`docs/api-contract.yaml`](docs/api-contract.yaml) tal cual. Para probar rutas
+protegidas: `POST /auth/login` → copiar `accessToken` → botón **Authorize**.
+En producción está apagada por defecto (`DOCS_ENABLED`): publicar la superficie
+completa de la API es información gratis para quien mire.
+
+| Área | Endpoints |
+|---|---|
+| Autenticación | `POST /auth/login` · `POST /auth/refresh` · `POST /auth/logout` · `GET /auth/me` |
+| Tickets | `GET /tickets` · `POST /tickets` · `GET /tickets/{id}` · `PATCH /tickets/{id}` |
+| Flujo del ticket | `POST /tickets/{id}/status` · `POST /tickets/{id}/assign` · `GET /tickets/{id}/history` |
+| Comentarios | `GET /tickets/{id}/comments` · `POST /tickets/{id}/comments` |
+| Usuarios | `GET /users` · `POST /users/{id}/block` · `POST /users/{id}/unblock` |
+| Catálogos | `GET /clients` · `GET /ticket-categories` |
+| Métricas | `GET /metrics/dashboard` |
+| Operación | `GET /health` |
+
+**Convenciones:**
+
+- **Paginación por keyset** (`limit` + `cursor` opaco), nunca por `OFFSET` y
+  **sin total**: el `COUNT(*)` sobre el filtro es la consulta que se cae con
+  millones de filas. Respuesta `{ data, pageInfo: { nextCursor, hasMore } }`.
+- **Errores en RFC 9457** (`application/problem+json`) siempre, incluidos los
+  500, con un `code` estable para el cliente y un `traceId` que correlaciona con
+  el log del servidor.
+- **Cambiar estado y asignar son endpoints propios**, no campos del `PATCH`:
+  cada uno deja su rastro en el historial dentro de la misma transacción.
+- El detalle del ticket incluye `allowedStatusTransitions`: los estados a los que
+  **quien pregunta** puede moverlo. El front no replica la regla.
+
+**Códigos que el cliente distingue:**
+
+| HTTP | `code` | Significado |
+|---|---|---|
+| 401 | `AUTH_TOKEN_EXPIRED` | Renovar con `/auth/refresh` y reintentar una vez |
+| 401 | `AUTH_TOKEN_REVOKED` · `AUTH_USER_BLOCKED` · `AUTH_TOKEN_INVALID` | No reintentar: cerrar sesión |
+| 401 | `AUTH_INVALID_CREDENTIALS` | Login fallido, idéntico exista o no el email |
+| 409 | `INVALID_STATUS_TRANSITION` | Transición no permitida desde el estado actual |
+| 409 | `CONFLICT` | Otro usuario cambió el ticket entre lectura y escritura |
+| 409 | `TICKET_CLOSED` | Editar o reasignar un cerrado; solo el admin reabre |
+| 423 | `ACCOUNT_LOCKED` | Cuenta bloqueada por intentos fallidos o por un admin |
+| 429 | `RATE_LIMITED` | Con cabecera `Retry-After` en segundos, expuesta por CORS |
+
+## Roles y permisos
+
+Matriz implementada y cubierta por tests e2e. Los 403 son de **rol**; los 404
+son de **pertenencia**: un ticket ajeno "no existe" para el agente.
+
+| Acción | Admin | Supervisor | Agente |
+|---|:-:|:-:|:-:|
+| Ver tickets | todos | todos | solo asignados |
+| Crear ticket | ✓ | ✓ | ✓ (queda autoasignado) |
+| Editar ticket | ✓ | — | solo asignados |
+| Cambiar estado | ✓ | — | solo asignados |
+| Cerrar / reabrir | ✓ | — | — |
+| Asignar / reasignar | ✓ | ✓ | — |
+| Comentar | ✓ | ✓ | solo asignados |
+| Comentario interno | ✓ | ✓ | lee, no crea |
+| Métricas del dashboard | ✓ | ✓ | — |
+| Listar usuarios | ✓ | ✓ | — |
+| Bloquear / desbloquear | ✓ | — | — |
+
+Los roles son N:M: un supervisor que también atiende tickets recibe la unión de
+permisos. Los permisos viven en código ([`src/auth/permissions.ts`](src/auth/permissions.ts)),
+versionados y revisables en cada cambio.
+
+## Datos y rendimiento
+
+El modelo se diseñó **desde las consultas hacia atrás**: tres columnas existen
+solo porque una consulta del enunciado las necesita
+(`last_activity_at`, `reassignment_count`, `resolved_by_user_id`).
+
+`pnpm db:seed` genera un volumen con distribución deliberada, no uniforme:
+100.000 tickets y ~660.000 filas de trazabilidad (asignaciones, historial de
+estados y comentarios), reproducible con `setseed`.
+
+| Consulta | Plan | Tiempo |
+|---|---|---|
+| 3 · Estancados > 48 h | `Index Scan` sobre el índice parcial `idx_tickets_stale` | ~0,8 ms |
+| 7 · Reasignados > 2 veces | `Index Scan` sobre `idx_tickets_reasignados`, sin `Sort` | ~0,9 ms |
+| 1, 2, 5, 6 · Agregaciones globales | Leen la tabla por definición | 18–57 ms → vista materializada |
+
+Los `EXPLAIN (ANALYZE, BUFFERS)` completos, y lo que se aprendió midiendo
+(incluida una conclusión propia que hubo que corregir), están en
+[`docs/EXPLAIN.md`](docs/EXPLAIN.md).
+
 ```bash
-# En .env, sin valor por defecto: el seed falla si falta.
-SEED_PASSWORD=<la que quieras, mínimo 8 caracteres>
-pnpm db:seed
+pnpm db:psql -f queries.sql     # ejecutar las 8 consultas
 ```
 
-Al terminar imprime los tres emails. Hoy son `admin@forward.test`,
-`supervisor1@forward.test` y el agente con más carga real de los 100.000
-tickets, que es el que encabeza la consulta 6.
+## Calidad
 
-El resto de los 40 usuarios **no pueden iniciar sesión**: en `password_hash`
-tienen un marcador, no un hash. Meter en el repositorio el hash de una
-contraseña conocida es meter una credencial válida en el repositorio.
+```bash
+pnpm lint        # oxlint --type-aware sobre src/, test/ y prisma/
+pnpm typecheck   # tsc sobre el proyecto entero
+pnpm build       # compilación de producción
+pnpm test        # 55 unitarios: máquina de estados, permisos, tokens, guard
+pnpm test:e2e    # 27 e2e: contrato de errores y matriz de roles completa
+pnpm test:cov    # cobertura lcov de unitarios y e2e
+pnpm sonar:scan  # análisis en SonarQube (tras test:cov)
+```
 
-### Errores
+- **Los tests pueden fallar.** Se validaron con cinco mutaciones deliberadas
+  (cerrar sin ser admin, no revocar sesiones robadas, ignorar la versión del
+  token, dar edición al supervisor, dejar al agente ver tickets ajenos): las
+  cinco se detectaron.
+- **El lint tiene dientes**: corre con `--type-aware`, sin el cual
+  `no-floating-promises` se acepta en la configuración pero no detecta nada.
+- `lint` y `typecheck` no son redundantes con `build`: la compilación solo cubre
+  `src/`.
 
-Todas las respuestas de error, incluidos los 500, siguen **RFC 9457**
-(`application/problem+json`). El campo `code` es el identificador estable sobre
-el que ramifica el cliente; `title` es texto para humanos y puede cambiar.
-
-Los tres códigos de 401 se distinguen a propósito, porque reintentar el refresh
-cuando la sesión está revocada es un bucle infinito:
-
-| `code` | Qué hace el cliente |
-|---|---|
-| `AUTH_TOKEN_EXPIRED` | renueva en `/auth/refresh` y reintenta una vez |
-| `AUTH_TOKEN_REVOKED` | cierra sesión |
-| `AUTH_USER_BLOCKED` | cierra sesión y muestra el motivo |
-| `AUTH_TOKEN_INVALID` | token ausente o ilegible: cierra sesión |
-
-## Documentación de la API
-
-Swagger UI en **`http://localhost:3000/docs`**, servida desde
-`docs/api-contract.yaml` tal cual: no se genera otro contrato desde
-decoradores, porque la fuente de verdad compartida con el front es el YAML. El
-fichero crudo está en `/docs/openapi.yaml`.
-
-Activa por defecto salvo con `NODE_ENV=production`; `DOCS_ENABLED=true` o
-`false` lo fuerza. En producción está apagada a propósito: publicar la
-superficie completa de la API es información gratis para quien mire.
-
-## Imagen Docker
+## Contenedor y despliegue
 
 ```bash
 docker build --format docker -t forward-api .                          # API
 docker build --format docker --target migrate -t forward-api-migrate . # migraciones
 ```
 
-`--format docker` hace falta con podman: en formato OCI se ignora el `HEALTHCHECK`.
-
-- **Multi-etapa.** Se compila con las dependencias de desarrollo; la imagen final
-  lleva solo `dist`, las dependencias de producción y `package.json`.
-- **Sin secretos.** Todo entra por variables de entorno en ejecución: como
-  mínimo `DATABASE_URL`, `JWT_ACCESS_SECRET` y `CORS_ORIGIN` (en AWS, desde
-  Secrets Manager en la task definition). La misma imagen sirve para todos los
-  entornos. `.dockerignore` excluye `.env` del contexto de build.
-- **Sin root.** Corre como el usuario `node` (uid 1000).
-- **`HEALTHCHECK`** contra `/health`, con `node` y `fetch`, sin instalar curl.
-- **Cierre ordenado.** Sale con `SIGTERM` en ~2 s (lo que manda ECS al
-  desplegar), gracias a `enableShutdownHooks()`.
-- **Migraciones aparte.** La imagen de la API no lleva el CLI de prisma para
-  migrar. La etapa `migrate` es una tarea puntual de ECS que ejecuta
-  `prisma migrate deploy` antes de desplegar la nueva versión.
-
-Tamaño: 539 MB, de los que ~200 MB son herramientas que entran por un peer
-opcional de `@prisma/client` y no se usan en runtime. Causa, lo que se probó y
-las salidas posibles en `docs/KNOWN_ISSUES.md`.
-
-## Healthcheck
-
-`GET /health` es público, no pasa por el rate limiting y responde:
-
-| Estado | Cuándo |
+| Propiedad | Cómo |
 |---|---|
-| `200 {"status":"ok","database":"up"}` | la base responde a `SELECT 1` en menos de 2 s |
-| `503` (RFC 9457, `SERVICE_UNAVAILABLE`) | la base no responde o tarda más |
+| Multi-etapa | Compila con dependencias de desarrollo; la imagen final lleva `dist` y dependencias de producción |
+| Sin secretos | Todo por variables de entorno en ejecución; `.dockerignore` excluye `.env` |
+| Sin root | Usuario `node` (uid 1000) |
+| Healthcheck | `GET /health`: 200 si la base responde, 503 si no o si tarda más de 2 s |
+| Cierre ordenado | Sale con `SIGTERM` en ~2 s, que es lo que manda ECS al desplegar |
+| Migraciones | Imagen `migrate` para una tarea puntual antes de cada despliegue |
 
-Es el que usan el balanceador (ALB) y el `HEALTHCHECK` de la imagen. No va
-limitado porque un 429 haría que el balanceador diera la instancia por caída,
-y tiene timeout propio porque un healthcheck que no contesta es peor que uno
-que dice 503. El error de la base no aparece en la respuesta: el endpoint es
-público.
+`--format docker` es necesario con Podman: en formato OCI se ignora el
+`HEALTHCHECK`. La imagen pesa 539 MB, de los que ~200 MB son herramientas que
+entran por una dependencia opcional de `@prisma/client`; causa y alternativas
+en [`docs/KNOWN_ISSUES.md`](docs/KNOWN_ISSUES.md).
 
-## Calidad
+El despliegue objetivo es **AWS** (S3 + CloudFront, ALB + ECS Fargate, RDS,
+Secrets Manager). Diseño y razones en
+[`docs/DECISIONES-TECNICAS.md`](docs/DECISIONES-TECNICAS.md#9-despliegue-en-aws).
 
-```bash
-pnpm lint        # oxlint --type-aware sobre src/, test/, prisma/
-pnpm typecheck   # tsc --noEmit sobre el proyecto entero
-pnpm build       # nest build (solo src/)
-pnpm test        # unitarios
-pnpm test:e2e    # end to end
+## Estructura del repositorio
+
 ```
-
-`lint` y `typecheck` no son redundantes con `build`: `nest build` compila solo
-`src/`, así que por sí solo no garantiza que el proyecto entero tipe. Y el lint
-corre con `--type-aware` porque `no-floating-promises` y `no-misused-promises`
-necesitan tipos: sin ese flag se aceptan en la configuración y no detectan nada.
+src/
+├── auth/          login, refresh, sesiones, guards, mapa de permisos
+├── tickets/       listado, detalle, escritura, estados, comentarios, historial
+├── users/         listado y bloqueo de usuarios
+├── catalog/       clientes y categorías
+├── metrics/       dashboard desde vista materializada
+├── health/        healthcheck para el balanceador
+├── common/        errores RFC 9457, paginación keyset, rate limiting, traza
+├── config/        variables de entorno, sin defaults para secretos
+├── docs/          Swagger UI servida desde el contrato
+└── prisma/        conexión a la base
+prisma/            esquema, migraciones y seed
+test/              e2e
+docs/              contrato, decisiones, arquitectura, mediciones, incidencias
+queries.sql        las 8 consultas del enunciado
+```
 
 ## Documentación
 
 | Documento | Contenido |
 |---|---|
-| [`docs/DECISIONES-TECNICAS.md`](docs/DECISIONES-TECNICAS.md) | Decisiones de arquitectura y modelo, cada una con su justificación, su costo asumido y las condiciones bajo las que la cambiaría. |
-| [`docs/modelo-er-soporte.ddb`](docs/modelo-er-soporte.ddb) | Modelo entidad-relación. Se abre en [drawdb.app](https://drawdb.app) con *File → Import diagram*. |
-| [`queries.sql`](queries.sql) | Las 8 consultas del enunciado, en SQL plano, cada una con la decisión no obvia comentada. |
-| [`docs/EXPLAIN.md`](docs/EXPLAIN.md) | `EXPLAIN (ANALYZE, BUFFERS)` real de las consultas sobre 100.000 tickets. Es la respuesta medida a "¿y con millones de registros?". |
-| [`docs/KNOWN_ISSUES.md`](docs/KNOWN_ISSUES.md) | Problemas ya diagnosticados y resueltos, con su causa. Consultar antes de depurar. |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Arquitectura del sistema: módulos, flujos, patrones y despliegue (en inglés) |
+| [`docs/DECISIONES-TECNICAS.md`](docs/DECISIONES-TECNICAS.md) | Cada decisión con su justificación, su costo asumido y cuándo se cambiaría |
+| [`docs/api-contract.yaml`](docs/api-contract.yaml) | Contrato OpenAPI 3.1 compartido con el front: la fuente de verdad de la API |
+| [Diagrama entidad-relación](https://www.drawdb.app/editor?shareId=c7c2bb718cc409d8b5125b76deb767c6) | Modelo de datos en drawDB. También en [`docs/modelo-er-soporte.ddb`](docs/modelo-er-soporte.ddb) (*File → Import diagram*) |
+| [`queries.sql`](queries.sql) | Las 8 consultas del enunciado, cada una con su decisión no obvia comentada |
+| [`docs/EXPLAIN.md`](docs/EXPLAIN.md) | Planes de ejecución reales sobre 100.000 tickets |
+| [`docs/KNOWN_ISSUES.md`](docs/KNOWN_ISSUES.md) | Problemas diagnosticados y resueltos, con su causa. Consultar antes de depurar |
 
 ## Uso de herramientas de IA
 
-> Declaración exigida por el enunciado. **Pendiente de completar con los
-> porcentajes reales antes de la entrega.**
+> Declaración exigida por el enunciado. **Pendiente de revisar y completar por
+> el autor con los porcentajes reales antes de la entrega.**
 
-- **Herramienta:** Claude Code (Opus).
-- **Dónde se usó hasta ahora:** contraste de alternativas en el modelo de datos,
-  redacción de la documentación y del `docker-compose`.
-- **Dónde no:** las decisiones de arquitectura (enums vs catálogo, estrategia de
-  invalidación de sesión, desnormalizaciones) son propias y están argumentadas
-  una a una en `docs/DECISIONES-TECNICAS.md`.
-- **Verificación:** la infraestructura no se dio por buena hasta levantarla:
-  los tres fallos de entorno que aparecieron en el camino están en
-  `docs/KNOWN_ISSUES.md` con su causa.
+- **Herramienta:** Claude Code (Anthropic).
+- **Dónde se usó:** implementación de la API y de los tests bajo dirección y
+  revisión del autor, generación del volumen de datos, mediciones con `EXPLAIN`,
+  infraestructura local y documentación.
+- **Criterio propio:** las decisiones de modelo y arquitectura están argumentadas
+  una a una en [`docs/DECISIONES-TECNICAS.md`](docs/DECISIONES-TECNICAS.md).
+- **Verificación:** nada se dio por bueno sin ejecutarlo. Cada funcionalidad se
+  probó contra la API corriendo, los tests se validaron con mutaciones y los
+  fallos encontrados por el camino están documentados con su causa en
+  [`docs/KNOWN_ISSUES.md`](docs/KNOWN_ISSUES.md).
 
 ## Estado
 
 - [x] Modelo entidad-relación y decisiones técnicas
-- [x] Entorno Postgres (desarrollo + pruebas)
-- [x] Esquema Prisma y migraciones — 11 tablas, 3 enums
-- [x] Seed con volumen realista — 100.000 tickets y 659.000 filas de trazabilidad
-- [x] `queries.sql` — las 8 consultas del enunciado, ejecutadas y medidas
-- [x] Autenticación: sesiones rotativas, RFC 9457, CORS y rate limiting
-- [ ] Módulo de tickets y CRUD de lectura
-- [ ] Front React
+- [x] Infraestructura local: Postgres de desarrollo y de pruebas
+- [x] Esquema, migraciones y seed de 100.000 tickets
+- [x] Las 8 consultas del enunciado, ejecutadas y medidas
+- [x] Autenticación con sesiones rotativas, bloqueo inmediato y rate limiting
+- [x] Tickets completos: listado, detalle, alta, edición, estados, asignación, comentarios, historial
+- [x] Usuarios: listado, bloqueo y desbloqueo
+- [x] Métricas del dashboard desde vista materializada
+- [x] Tests unitarios y e2e de la matriz de roles
+- [x] Imagen Docker de producción, healthcheck y Swagger
+- [ ] Análisis de SonarQube (configurado; el escaneo local falla por un problema de red de Podman)
+- [ ] Despliegue en AWS
