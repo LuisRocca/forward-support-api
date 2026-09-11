@@ -476,7 +476,14 @@ SonarQube con cobertura lcov de unitarios y e2e.
 
 ## 9. Despliegue en AWS
 
-No se despliega en esta fase; el diseño y la imagen ya lo contemplan.
+La infraestructura está escrita como código (AWS CDK en TypeScript, en
+[`infra/`](../infra)) y sintetiza sin errores, pero **no está desplegada**. El
+enunciado fija AWS como cloud objetivo, no pide una URL pública, y la cuenta
+disponible ya no tiene free tier de 12 meses: una demo encendida 24/7 costaría
+~35–45 USD/mes sin aportar nada que el código no demuestre ya.
+
+La tabla describe el objetivo de producción. Lo que hay en `infra/` es la
+**variante mínima de demo** del mismo diseño (ver más abajo).
 
 | Pieza | Servicio | Por qué |
 |---|---|---|
@@ -508,7 +515,44 @@ con un bundler, y queda para la fase de mejoras.
 
 **Dominio:** front y API bajo el mismo dominio registrable (`app.` y `api.`), para
 que la cookie `SameSite=Strict` del refresh siga funcionando. Con dominios
-distintos, el refresh dejaría de funcionar en silencio.
+distintos, el refresh dejaría de funcionar en silencio. Sin dominio propio, la
+variante de `infra/` resuelve lo mismo con una sola distribución de CloudFront
+que sirve ambos bajo `*.cloudfront.net`.
+
+### La variante de demo en `infra/`
+
+```mermaid
+flowchart LR
+    user([Usuario]) -->|HTTPS| cf[CloudFront]
+    cf -->|"/*"| s3[(S3 privado<br/>SPA)]
+    cf -->|"/api/*" · VPC origin| alb[ALB interno]
+    subgraph VPC
+        alb --> api[Fargate · 1 tarea]
+        api -->|TLS verify-full| rds[(RDS PG 18<br/>t4g.micro)]
+        mig[Tareas puntuales<br/>migrate · seed] --> rds
+    end
+    sm[Secrets Manager] -.-> api & mig
+```
+
+| Decisión | Por qué |
+|---|---|
+| Una distribución: `/*` → S3, `/api/*` → ALB | Mismo origen sin comprar dominio: la cookie `SameSite=Strict` funciona tal cual |
+| `API_PREFIX=api` en la API | Sin prefijo, `/tickets` sería a la vez ruta del SPA y endpoint. La cookie de refresh sigue al prefijo (`Path=/api/auth`) |
+| CloudFront Function para las rutas del SPA | Las *error responses* de CloudFront son de toda la distribución y convertirían los 404 JSON de la API en `index.html` |
+| ALB **interno** con CloudFront VPC origin | Nadie llega a la API sin pasar por CloudFront, así que `X-Forwarded-For` no se puede falsificar |
+| `TRUST_PROXY_HOPS=2` | Hay dos proxies (CloudFront + ALB). Con 1, `req.ip` sería la IP del nodo de CloudFront y el rate limit de login sería compartido |
+| Sin NAT Gateway | Ahorra ~32 USD/mes: las tareas salen por IP pública y su security group solo admite al ALB. ALB y RDS en subredes aisladas |
+| `sslmode=verify-full` con la CA de RDS en la imagen | Cifrar sin verificar el certificado no protege de un intermediario. `pg` y el motor de migraciones de Prisma usan parámetros distintos, así que cada tarea compone su URL |
+| `DATABASE_URL` compuesta al arrancar | La contraseña vive solo en Secrets Manager; se genera sin caracteres reservados de URL para no codificarla |
+| RDS con `RemovalPolicy.SNAPSHOT` | `cdk destroy` deja un snapshot final: borrar la base nunca es un accidente |
+
+Coste estimado de la variante: ~35–45 USD/mes (ALB ~18, RDS ~15, Fargate ~9, IP
+pública ~4; CloudFront y S3 casi cero). Uso en [`infra/README.md`](../infra/README.md).
+
+**Sin verificar contra AWS real:** la conexión TLS a RDS (API y migraciones) y
+el número de saltos de `X-Forwarded-For` a través del VPC origin. Ambos se
+comprobaron en local (la IP del cliente con dos proxies simulados), pero no
+contra el servicio.
 
 **Lo que cambia al pasar de una réplica a varias**, y es lo primero que
 preguntaría un revisor:
@@ -532,11 +576,12 @@ de un `COUNT(*)` por carga.
 **Hecho:** modelo y migraciones · seed de 100.000 tickets · las 8 consultas
 medidas · autenticación con sesiones rotativas y bloqueo inmediato · tickets,
 comentarios, historial, usuarios y métricas · matriz de roles · tests unitarios y
-e2e validados con mutaciones · imagen Docker, healthcheck y Swagger.
+e2e validados con mutaciones · imagen Docker, healthcheck y Swagger ·
+infraestructura AWS como código (`infra/`, sin desplegar).
 
 **Pendiente, por prioridad:**
 
-1. Despliegue en AWS según la sección 9.
+1. Desplegar `infra/` y verificar TLS con RDS y la IP del cliente tras CloudFront.
 2. Ejecutar el análisis de SonarQube: configurado, pero el escaneo local falla
    por un problema de red de Podman.
 3. Rate limiting compartido (Redis o WAF) antes de escalar a varias réplicas.

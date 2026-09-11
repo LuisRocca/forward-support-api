@@ -54,6 +54,7 @@ dar seguimiento, con trazabilidad completa y control de acceso por rol.
 | Tests | Vitest (unitarios y e2e con Supertest) |
 | Calidad | oxlint `--type-aware` · Prettier · SonarQube |
 | Contenedores | Docker/Podman multi-etapa · Docker Compose para la infraestructura local |
+| Infraestructura | AWS CDK (TypeScript): CloudFront, ALB, ECS Fargate, RDS, Secrets Manager |
 | Paquetes | pnpm |
 
 ## Arquitectura
@@ -279,6 +280,15 @@ en [`docs/KNOWN_ISSUES.md`](docs/KNOWN_ISSUES.md).
 El despliegue objetivo es **AWS** (S3 + CloudFront, ALB + ECS Fargate, RDS,
 Secrets Manager). Diseño y razones en
 [`docs/DECISIONES-TECNICAS.md`](docs/DECISIONES-TECNICAS.md#9-despliegue-en-aws).
+La infraestructura está escrita en CDK en [`infra/`](infra/README.md) y
+sintetiza sin errores; no está desplegada.
+
+Variables que solo importan detrás de proxies:
+
+| Variable | Local | AWS (`infra/`) |
+|---|---|---|
+| `API_PREFIX` | vacío | `api`: front y API comparten dominio |
+| `TRUST_PROXY_HOPS` | `1` | `2`: CloudFront + ALB |
 
 ## Estructura del repositorio
 
@@ -297,6 +307,8 @@ src/
 prisma/            esquema, migraciones y seed
 test/              e2e
 docs/              contrato, decisiones, arquitectura, mediciones, incidencias
+infra/             infraestructura AWS en CDK (proyecto aparte, sin desplegar)
+certs/             CA pública de RDS para verificar TLS
 queries.sql        las 8 consultas del enunciado
 ```
 

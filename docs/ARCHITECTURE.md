@@ -324,6 +324,17 @@ The container is built for this environment:
 - Front end and API share a registrable domain (`app.` / `api.`) so the
   `SameSite=Strict` refresh cookie keeps working.
 
+### Infrastructure as code (`infra/`)
+
+The environment is defined in AWS CDK (TypeScript) and synthesizes cleanly, but
+is **not deployed**. It is a minimal demo variant of the diagram above: without
+a custom domain, one CloudFront distribution serves the SPA (`/*`, from S3) and
+the API (`/api/*`, `API_PREFIX=api`) from the same origin, reaching an
+**internal** ALB through a CloudFront VPC origin. A single Fargate task talks to
+a single-AZ RDS instance over `verify-full` TLS. There is no NAT gateway, and
+the API trusts two proxy hops (`TRUST_PROXY_HOPS=2`) so rate limiting sees the
+real client IP. Details and costs are in `DECISIONES-TECNICAS.md` §9.
+
 **When scaling past one task:** the rate limiter moves from process memory to
 Redis or AWS WAF rate-based rules (otherwise each task counts separately), and
 the `token_version` lookup can move to ElastiCache.
