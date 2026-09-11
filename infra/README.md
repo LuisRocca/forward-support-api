@@ -11,7 +11,8 @@ RDS PostgreSQL 18 `t4g.micro`, en `us-east-1`.
 
 - Node 24 y pnpm.
 - Docker o Podman (`CDK_DOCKER=podman` si no hay un `docker` en el PATH).
-- `erp_forward` clonado junto a este repo (`../../erp_forward`): la síntesis
+- El front clonado junto a este repo con el nombre `erp_forward`
+  (`git clone https://github.com/LuisRocca/forward-support-web.git erp_forward`): la síntesis
   compila el front con `VITE_API_URL=/api`.
 - Credenciales de un usuario IAM (nunca root) configuradas con `aws configure`.
 

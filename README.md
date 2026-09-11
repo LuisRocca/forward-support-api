@@ -4,7 +4,7 @@ API REST para la gestión de tickets de soporte: registrar, consultar, asignar y
 dar seguimiento, con trazabilidad completa y control de acceso por rol.
 
 > Prueba técnica · Tech Lead Full Stack JavaScript.
-> El frontend vive en un repositorio aparte (`erp_forward`) y consume esta API a
+> El frontend vive en un repositorio aparte ([forward-support-web](https://github.com/LuisRocca/forward-support-web)) y consume esta API a
 > través de un contrato OpenAPI compartido.
 
 **Lo esencial en 30 segundos**
