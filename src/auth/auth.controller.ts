@@ -3,6 +3,7 @@ import { Throttle } from '@nestjs/throttler';
 import type { CookieOptions, Request, Response } from 'express';
 
 import { AppError } from '../common/problem/app-error.js';
+import { EnvService } from '../config/env.js';
 import { AuthService } from './auth.service.js';
 import type { Sesion, UsuarioAutenticado } from './auth.service.js';
 import { UsuarioActual } from './decorators/current-user.decorator.js';
@@ -34,7 +35,10 @@ interface RespuestaSesion {
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly auth: AuthService) {}
+  constructor(
+    private readonly auth: AuthService,
+    private readonly env: EnvService,
+  ) {}
 
   @Publico()
   @Post('login')
@@ -107,7 +111,9 @@ export class AuthController {
       // en un atributo de seguridad, que es como se acaba desplegando sin él.
       secure: true,
       sameSite: 'strict', // no viaja en peticiones cross-site: defensa CSRF
-      path: '/auth', // solo se envía a los endpoints que la necesitan
+      // Solo se envía a los endpoints que la necesitan. Sigue al prefijo global:
+      // con /api delante y path '/auth', el navegador no la mandaría nunca.
+      path: this.env.prefijoApi === '' ? '/auth' : `/${this.env.prefijoApi}/auth`,
     };
   }
 

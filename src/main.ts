@@ -19,7 +19,9 @@ async function bootstrap(): Promise<void> {
 
   // Detrás de un proxy, sin esto req.ip es la IP del proxy y el rate limiting
   // por IP se vuelve un límite global compartido por todos los usuarios.
-  app.set('trust proxy', 1);
+  app.set('trust proxy', env.saltosProxy);
+
+  if (env.prefijoApi !== '') app.setGlobalPrefix(env.prefijoApi);
 
   app.enableCors({
     // Lista blanca explícita. Nunca '*': con credentials el navegador descarta

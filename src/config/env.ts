@@ -38,6 +38,24 @@ export class EnvService {
     return Number(this.config.get<string>('PORT') ?? 3000);
   }
 
+  /**
+   * Prefijo de todas las rutas ("api" → /api/tickets). Vacío en local. Hace
+   * falta cuando front y API comparten dominio: sin él, /tickets sería a la
+   * vez una ruta del SPA y un endpoint.
+   */
+  get prefijoApi(): string {
+    return (this.config.get<string>('API_PREFIX') ?? '').trim().replace(/^\/|\/$/g, '');
+  }
+
+  /**
+   * Proxies de confianza delante de la API: 1 con solo un balanceador, 2 con
+   * CloudFront + ALB. Si se queda corto, req.ip es la IP del proxy y el rate
+   * limiting por IP pasa a ser un límite compartido por todos los usuarios.
+   */
+  get saltosProxy(): number {
+    return Number(this.config.get<string>('TRUST_PROXY_HOPS') ?? 1);
+  }
+
   get databaseUrl(): string {
     return requerido(this.config.get<string>('DATABASE_URL'), 'DATABASE_URL');
   }
