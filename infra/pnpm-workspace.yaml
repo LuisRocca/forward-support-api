@@ -1,0 +1,13 @@
+# Proyecto independiente de la API: sin este fichero, pnpm tomaría el
+# pnpm-workspace.yaml del directorio padre y mezclaría las dependencias de CDK
+# en el lockfile de la API.
+
+# aws-cdk-lib publica versión casi a diario; se fija una concreta y se exime
+# de la antigüedad mínima de publicación.
+minimumReleaseAgeExclude:
+  - aws-cdk-lib@2.269.0
+
+# esbuild entra con tsx; su postinstall solo comprueba el binario de la
+# plataforma, que ya llega como dependencia opcional. Igual que en la API.
+allowBuilds:
+  esbuild: false

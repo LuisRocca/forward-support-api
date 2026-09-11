@@ -1,0 +1,25 @@
+{
+  "name": "forward-infra",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:front": "cd ../../erp_forward && VITE_API_URL=/api pnpm build",
+    "synth": "cdk synth",
+    "diff": "cdk diff",
+    "deploy": "pnpm build:front && cdk deploy",
+    "destroy": "cdk destroy",
+    "task:migrate": "sh scripts/run-task.sh MigrateTaskArn",
+    "task:seed": "sh scripts/run-task.sh SeedTaskArn",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "2.269.0",
+    "constructs": "10.8.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "aws-cdk": "2.1141.0",
+    "tsx": "^4.23.13",
+    "typescript": "~6.0.3"
+  }
+}

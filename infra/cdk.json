@@ -1,0 +1,4 @@
+{
+  "app": "pnpm --silent build:front && tsx bin/infra.ts",
+  "output": "cdk.out"
+}
