@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  api:
+    name: Lint, tipos, build y tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    # Base efímera solo para la suite e2e: nace y muere con el job.
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: forward
+          POSTGRES_PASSWORD: forward_ci
+          POSTGRES_DB: forward_support_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U forward -d forward_support_test"
+          --health-interval 5s --health-timeout 3s --health-retries 12
+
+    env:
+      # prisma.config.ts exige DATABASE_URL al cargarse; en CI solo existe la de test.
+      DATABASE_URL: postgresql://forward:forward_ci@localhost:5432/forward_support_test?schema=public
+      DATABASE_URL_TEST: postgresql://forward:forward_ci@localhost:5432/forward_support_test?schema=public
+      CORS_ORIGIN: http://localhost:5173
+
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.10.0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+      # El cliente de Prisma se genera en src/generated (no versionado): typecheck,
+      # build y tests lo necesitan.
+      - run: pnpm db:generate
+      # Secreto de un solo uso: no hay ninguno guardado en el repo ni en GitHub.
+      - run: echo "JWT_ACCESS_SECRET=$(openssl rand -base64 48)" >> "$GITHUB_ENV"
+
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm build
+      - run: pnpm test
+      - run: pnpm test:e2e
+
+  infra:
+    name: Infraestructura (CDK) — tipos
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: infra
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.10.0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: infra/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
