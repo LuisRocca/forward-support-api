@@ -12,3 +12,5 @@ test
 *.log
 docker-compose*.yml
 sonar-project.properties
+# Infraestructura (CDK): incluye cdk.out, que contiene el propio contexto de build.
+infra

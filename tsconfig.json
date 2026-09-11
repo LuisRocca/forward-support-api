@@ -25,5 +25,7 @@
     // exterior se valida en el borde, que es donde tiene que validarse.
     "strictPropertyInitialization": false,
     "types": ["vitest/globals", "node"]
-  }
+  },
+  // infra/ es un proyecto aparte (CDK) con su propio tsconfig y dependencias.
+  "exclude": ["node_modules", "dist", "infra"]
 }

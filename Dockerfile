@@ -56,9 +56,10 @@ RUN pnpm install --prod --frozen-lockfile
 # Imagen para una tarea puntual de ECS que aplica las migraciones antes de
 # desplegar la API. La imagen de la API no lleva el CLI de prisma: no le hace
 # falta para arrancar y es superficie de ataque que no necesita.
-FROM deps AS migrate
-COPY prisma.config.ts ./
-COPY prisma ./prisma
+# Sale de `build` y no de `deps` porque el seed importa el cliente generado:
+# la misma imagen sirve para `prisma db seed` cambiando el comando.
+FROM build AS migrate
+COPY --chown=node:node certs ./certs
 USER node
 CMD ["node_modules/.bin/prisma", "migrate", "deploy"]
 
@@ -74,6 +75,9 @@ COPY --chown=node:node package.json ./
 # Para /docs si se activa con DOCS_ENABLED=true; por defecto está apagada en
 # producción.
 COPY --chown=node:node docs/api-contract.yaml ./docs/api-contract.yaml
+# CA de RDS: la conexión a la base verifica el certificado del servidor
+# (sslmode=verify-full) en vez de aceptar cualquiera.
+COPY --chown=node:node certs ./certs
 
 # Sin root: si alguien consigue ejecutar código en el proceso, no es root del
 # contenedor.
@@ -82,6 +86,6 @@ EXPOSE 3000
 
 # Con node y fetch nativo, sin instalar curl ni wget en la imagen.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD node -e "fetch('http://127.0.0.1:' + (process.env.PORT || 3000) + '/health').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+  CMD node -e "fetch('http://127.0.0.1:' + (process.env.PORT || 3000) + (process.env.API_PREFIX ? '/' + process.env.API_PREFIX : '') + '/health').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
 
 CMD ["node", "dist/main.js"]
