@@ -1,7 +1,5 @@
 # Plataforma de Soporte — API
 
-[![CI](https://github.com/LuisRocca/forward-support-api/actions/workflows/ci.yml/badge.svg)](https://github.com/LuisRocca/forward-support-api/actions/workflows/ci.yml)
-
 API REST para la gestión de tickets de soporte: registrar, consultar, asignar y
 dar seguimiento, con trazabilidad completa y control de acceso por rol.
 
@@ -257,8 +255,8 @@ pnpm sonar:scan  # análisis en SonarQube (tras test:cov)
   `no-floating-promises` se acepta en la configuración pero no detecta nada.
 - `lint` y `typecheck` no son redundantes con `build`: la compilación solo cubre
   `src/`.
-- **CI en cada push y pull request** ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)):
-  todo lo anterior salvo Sonar, con los e2e contra un PostgreSQL 18 efímero del
+- **Pipeline de CI** en [`.github/workflows/ci.yml`](.github/workflows/ci.yml), hoy de
+  lanzamiento manual: todo lo anterior salvo Sonar, con los e2e contra un PostgreSQL 18 efímero del
   propio workflow, más el chequeo de tipos de `infra/`. El secreto JWT se genera
   en cada ejecución: no hay ninguno guardado en el repo ni en GitHub.
 

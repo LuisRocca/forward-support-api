@@ -1,9 +1,9 @@
 name: CI
 
+# Lanzamiento manual (Actions → CI → Run workflow). Para ejecutarlo en
+# cada push, sustituir por `push: { branches: [main, develop] }` y `pull_request:`.
 on:
-  push:
-    branches: [main, develop]
-  pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
